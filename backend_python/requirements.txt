@@ -11,3 +11,6 @@ arxiv
 wikipedia
 ddgs
 pypdf
+edge-tts
+pydub
+google-api-python-client
