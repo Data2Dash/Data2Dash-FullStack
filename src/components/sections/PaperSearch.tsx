@@ -1,160 +1,278 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search } from 'lucide-react';
+import { Search, ArrowRight, X, Loader2 } from 'lucide-react';
+import { clsx } from 'clsx';
 import { Input } from '../ui/Input';
-import { Card, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { PaperInteractionPanel } from './PaperInteractionPanel';
 
+const SUGGESTIONS = [
+  'Transformer architectures in NLP',
+  'Protein folding with AlphaFold',
+  'Diffusion models for image generation',
+  'Reinforcement learning from human feedback',
+];
+
 export function PaperSearch() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState('');
   const [papers, setPapers] = useState<any[]>([]);
   const [selectedPaper, setSelectedPaper] = useState<any | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+  const handleSearch = async (query?: string) => {
+    const q = query ?? searchQuery;
+    if (!q.trim()) return;
+    setSearchQuery(q);
+    setSubmittedQuery(q);
     setIsSearching(true);
+    setHasSearched(true);
+    setSelectedPaper(null);
     try {
       const response = await fetch('http://localhost:8000/api/papers/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: searchQuery })
+        body: JSON.stringify({ query: q }),
       });
       const data = await response.json();
       if (data.papers && Array.isArray(data.papers)) {
         setPapers(data.papers);
       }
     } catch (error) {
-      console.error("Search error:", error);
+      console.error('Search error:', error);
     } finally {
       setIsSearching(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSearch();
-    }
+    if (e.key === 'Enter') handleSearch();
   };
 
   return (
-    <section className="bg-slate-50 py-20 min-h-screen bg-grid-slate-100" id="search">
-      <div className="container mx-auto px-4">
-        <div className="mb-12 text-center">
-          <Badge variant="secondary" className="mb-4 bg-white shadow-sm border-slate-200">Section 1</Badge>
-          <h2 className="mb-4 text-4xl font-bold text-slate-900 tracking-tight">Web Paper Search & Analysis</h2>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto">Search millions of papers from arXiv, IEEE, and Semantic Scholar with AI-powered insights.</p>
-        </div>
-
-        <div className="mx-auto max-w-6xl">
-          <div className="relative mb-10 max-w-2xl mx-auto">
-            <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full opacity-50" />
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-              <Input 
-                className="pl-12 h-14 text-lg shadow-lg border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/20 rounded-2xl" 
-                placeholder="Search for keywords, titles, or authors..." 
+    <div className="min-h-screen bg-stone-50 pt-14 flex flex-col">
+      {/* ── STICKY SEARCH BAR (after first search) ── */}
+      {hasSearched && (
+        <div className={clsx(
+          "sticky top-14 z-30 bg-white/90 backdrop-blur-sm border-b border-stone-100 py-3 px-6 transition-all duration-500 ease-in-out",
+          selectedPaper && "lg:pr-[42%]"
+        )}>
+          <div className="max-w-3xl mx-auto flex gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+              <Input
+                className="pl-10 h-10 rounded-xl text-sm"
+                placeholder="Search papers…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isSearching}
               />
-              {isSearching && (
-                <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
-                </div>
-              )}
             </div>
-          </div>
-
-          <div className="grid gap-8 lg:grid-cols-3 h-[600px]">
-            {/* Results List */}
-            <div className="space-y-4 lg:col-span-1 overflow-y-auto pr-2 custom-scrollbar">
-              {papers.length === 0 && !isSearching ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
-                  <Search className="h-8 w-8 mb-2 opacity-50" />
-                  <p className="text-sm">Search for papers to see results here.</p>
-                </div>
-              ) : (
-                papers.map((paper) => (
-                  <motion.div
-                    key={paper.id}
-                    whileHover={{ scale: 1.02, x: 5 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Card 
-                      className={`cursor-pointer transition-all duration-300 hover:shadow-md border-transparent ${selectedPaper?.id === paper.id ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-lg bg-white' : 'bg-white/60 hover:bg-white'}`}
-                      onClick={() => setSelectedPaper(paper)}
-                    >
-                      <CardContent className="p-5">
-                        <div className="mb-3 flex items-start justify-between">
-                          <Badge variant="outline" className="text-[10px] bg-slate-100 border-slate-200">{paper.source}</Badge>
-                          <span className="text-xs font-medium text-slate-400">{paper.date}</span>
-                        </div>
-                        <h3 className="mb-2 font-bold leading-tight text-slate-900">{paper.title}</h3>
-                        <p className="text-sm text-slate-500 font-medium">{paper.authors}</p>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))
-              )}
-            </div>
-
-            {/* Interaction Panel */}
-            <div className="lg:col-span-2 h-full">
-              <AnimatePresence mode="wait">
-                {selectedPaper ? (
-                  <motion.div
-                    key={selectedPaper.id}
-                    initial={{ opacity: 0, x: 20, scale: 0.95 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                    exit={{ opacity: 0, x: -20, scale: 0.95 }}
-                    transition={{ duration: 0.3 }}
-                    className="h-full"
-                  >
-                    <PaperInteractionPanel 
-                      title={selectedPaper.title}
-                      subtitle={`${selectedPaper.authors} • ${selectedPaper.date}`}
-                      initialMessage={
-                        <>
-                          Hello! I've analyzed <strong className="text-indigo-600">{selectedPaper.title}</strong>. Ask me anything about the methodology, results, or specific figures.
-                        </>
-                      }
-                      onClose={() => setSelectedPaper(null)}
-                      onSendMessage={async (message) => {
-                        try {
-                          const contextQuery = `Context: I am asking about the paper "${selectedPaper.title}" by ${selectedPaper.authors}. Abstract: ${selectedPaper.abstract}. Question: ${message}`;
-                          const response = await fetch('http://localhost:8000/api/search', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ query: contextQuery })
-                          });
-                          const data = await response.json();
-                          return data;
-                        } catch (error) {
-                          console.error("Search error:", error);
-                          throw error;
-                        }
-                      }}
-                    />
-                  </motion.div>
-                ) : (
-                  <div className="flex h-full items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-12 text-center backdrop-blur-sm">
-                    <div className="max-w-xs">
-                      <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-indigo-50 text-indigo-500">
-                        <Search className="h-10 w-10" />
-                      </div>
-                      <h3 className="text-xl font-bold text-slate-900 mb-2">Select a paper</h3>
-                      <p className="text-slate-500">Choose a paper from the list to start analyzing with AI.</p>
-                    </div>
-                  </div>
-                )}
-              </AnimatePresence>
-            </div>
+            <button
+              onClick={() => handleSearch()}
+              disabled={isSearching || !searchQuery.trim()}
+              className="px-4 h-10 rounded-xl bg-stone-900 text-white text-sm font-medium hover:bg-stone-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
+            </button>
           </div>
         </div>
+      )}
+
+      {/* ── EMPTY STATE / centered search ── */}
+      <AnimatePresence mode="wait">
+        {!hasSearched && (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.4 }}
+            className="flex-1 flex flex-col items-center justify-center px-6 py-24"
+          >
+            <div className="max-w-2xl w-full mx-auto text-center">
+              <div className="inline-flex p-3 rounded-2xl bg-white border border-stone-200 shadow-soft mb-6">
+                <Search className="h-6 w-6 text-stone-500" />
+              </div>
+              <h1 className="text-3xl font-bold text-stone-900 mb-2">Search research papers</h1>
+              <p className="text-stone-500 mb-8 text-base">
+                Powered by arXiv, IEEE &amp; Semantic Scholar
+              </p>
+
+              {/* Big search bar */}
+              <div className="relative w-full mb-4">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-stone-400" />
+                <input
+                  className="w-full h-14 rounded-2xl border border-stone-200 bg-white pl-12 pr-14 text-base text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-stone-400 shadow-soft transition-all"
+                  placeholder="Search for keywords, titles, or authors…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  autoFocus
+                />
+                <button
+                  onClick={() => handleSearch()}
+                  disabled={!searchQuery.trim()}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 rounded-xl bg-stone-900 text-white flex items-center justify-center hover:bg-stone-700 disabled:opacity-30 transition-colors"
+                >
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Suggestion chips */}
+              <div className="flex flex-wrap justify-center gap-2 mt-2">
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => handleSearch(s)}
+                    className="px-3.5 py-1.5 rounded-full border border-stone-200 bg-white text-sm text-stone-600 hover:border-stone-400 hover:text-stone-900 transition-all shadow-soft"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── RESULTS FEED ── */}
+      {hasSearched && (
+        <div className={`flex-1 flex relative overflow-hidden transition-all duration-300`}>
+          {/* Paper Feed */}
+          <div className={`flex-1 overflow-y-auto px-6 py-8 transition-all duration-300 ${selectedPaper ? 'lg:pr-[42%]' : ''}`}>
+            <div className="max-w-3xl mx-auto">
+              {isSearching ? (
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                  <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
+                  <p className="text-stone-500 text-sm">Searching papers…</p>
+                </div>
+              ) : papers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-24 text-stone-400 gap-3">
+                  <Search className="h-8 w-8 opacity-40" />
+                  <p className="text-sm">No papers found for "{submittedQuery}"</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-xs text-stone-400 mb-6">
+                    {papers.length} result{papers.length !== 1 ? 's' : ''} for{' '}
+                    <span className="font-medium text-stone-600">"{submittedQuery}"</span>
+                  </p>
+                  {papers.map((paper, idx) => (
+                    <motion.div
+                      key={paper.id || idx}
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: idx * 0.04 }}
+                    >
+                      <PaperCard
+                        paper={paper}
+                        isSelected={selectedPaper?.id === paper.id}
+                        onSelect={() => setSelectedPaper(paper.id === selectedPaper?.id ? null : paper)}
+                      />
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Slide-in AI Panel */}
+          <AnimatePresence>
+            {selectedPaper && (
+              <motion.div
+                key="panel"
+                initial={{ x: '100%', opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: '100%', opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+                className="fixed right-0 top-14 bottom-0 w-full lg:w-[42%] border-l border-stone-200 bg-white shadow-panel z-40 flex flex-col"
+              >
+                <PaperInteractionPanel
+                  title={selectedPaper.title}
+                  subtitle={`${selectedPaper.authors} · ${selectedPaper.date}`}
+                  initialMessage={
+                    <>
+                      I've analyzed <strong className="text-stone-900">{selectedPaper.title}</strong>. Ask me anything about the methodology, results, or figures.
+                    </>
+                  }
+                  onClose={() => setSelectedPaper(null)}
+                  onSendMessage={async (message) => {
+                    const contextQuery = `Context: Paper "${selectedPaper.title}" by ${selectedPaper.authors}. Abstract: ${selectedPaper.abstract}. Question: ${message}`;
+                    const response = await fetch('http://localhost:8000/api/search', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ query: contextQuery }),
+                    });
+                    return await response.json();
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaperCard({
+  paper,
+  isSelected,
+  onSelect,
+}: {
+  paper: any;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border bg-white p-6 transition-all duration-200 cursor-pointer group ${isSelected
+        ? 'border-stone-400 shadow-card ring-1 ring-stone-300'
+        : 'border-stone-200 hover:border-stone-300 hover:shadow-soft'
+        }`}
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline">{paper.source}</Badge>
+          <span className="text-xs text-stone-400">{paper.date}</span>
+        </div>
       </div>
-    </section>
+
+      {/* Title & Authors */}
+      <h3 className="font-semibold text-stone-900 leading-snug mb-1.5 text-base">
+        {paper.title}
+      </h3>
+      <p className="text-sm text-stone-500 mb-4">{paper.authors}</p>
+
+      {/* Abstract preview */}
+      {paper.abstract && (
+        <p className="text-sm text-stone-500 leading-relaxed line-clamp-2 mb-4">
+          {paper.abstract}
+        </p>
+      )}
+
+      {/* Action */}
+      <button
+        onClick={onSelect}
+        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${isSelected
+          ? 'bg-stone-900 text-white'
+          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+          }`}
+      >
+        {isSelected ? (
+          <>
+            <X className="h-3.5 w-3.5" /> Close Panel
+          </>
+        ) : (
+          <>
+            Analyze with AI <ArrowRight className="h-3.5 w-3.5" />
+          </>
+        )}
+      </button>
+    </div>
   );
 }

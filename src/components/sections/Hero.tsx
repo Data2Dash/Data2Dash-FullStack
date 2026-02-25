@@ -1,75 +1,111 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Button } from '../ui/Button';
-import { ArrowRight, Sparkles, FileText, Search, Database } from 'lucide-react';
+import { Search, FileText, Quote, ArrowRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+const features = [
+  {
+    icon: Search,
+    label: 'Paper Search',
+    description: 'Search millions of papers from arXiv, IEEE, and Semantic Scholar. Chat with any paper using AI.',
+    path: '/search',
+    color: 'bg-stone-100 text-stone-700',
+  },
+  {
+    icon: FileText,
+    label: 'PDF Analysis',
+    description: 'Upload your own documents and chat across multiple PDFs. Summarize, compare, and extract insights.',
+    path: '/upload',
+    color: 'bg-sage-50 text-sage-700',
+  },
+  {
+    icon: Quote,
+    label: 'Citation Helper',
+    description: 'Highlight text in your manuscript and auto-generate APA, MLA, and BibTeX citations instantly.',
+    path: '/citation',
+    color: 'bg-stone-100 text-stone-700',
+  },
+];
+
+const containerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.1 } },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
+};
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden bg-slate-950 pt-20 pb-32 lg:pt-32 lg:pb-40 min-h-screen flex items-center">
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-grid-slate-900 [mask-image:linear-gradient(to_bottom,transparent,black,transparent)]" />
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/50 via-slate-950/80 to-slate-950" />
-      
-      {/* Animated Blobs */}
-      <div className="absolute top-1/4 left-1/4 h-96 w-96 rounded-full bg-indigo-500/20 blur-3xl animate-float" />
-      <div className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-purple-500/20 blur-3xl animate-float-delayed" />
+    <section className="min-h-screen bg-stone-50 pt-14 flex flex-col">
+      {/* Subtle dot background */}
+      <div className="absolute inset-0 bg-dot-pattern opacity-30 pointer-events-none" />
 
-      <div className="container relative mx-auto px-4 text-center z-10">
+      {/* Hero Content */}
+      <div className="relative flex-1 flex flex-col items-center justify-center px-6 py-24 text-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="max-w-2xl mx-auto"
         >
-          <div className="mx-auto mb-8 flex max-w-fit items-center justify-center space-x-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-4 py-1.5 text-sm font-medium text-indigo-300 backdrop-blur-md shadow-[0_0_15px_rgba(99,102,241,0.3)]">
-            <Sparkles className="h-4 w-4 text-indigo-400" />
-            <span>AI-Powered Research Assistant</span>
-          </div>
-          
-          <h1 className="mb-8 text-5xl font-extrabold tracking-tight text-white sm:text-7xl lg:text-8xl">
-            DATA<span className="text-gradient">2</span>DASH
-          </h1>
-          
-          <p className="mx-auto mb-12 max-w-2xl text-lg text-slate-400 sm:text-xl leading-relaxed">
-            Accelerate your academic journey. 
-            <span className="text-slate-200 font-medium"> Search papers</span>, 
-            <span className="text-slate-200 font-medium"> analyze documents</span>, and 
-            <span className="text-slate-200 font-medium"> generate citations</span> with the power of next-gen AI.
-          </p>
-          
-          <div className="flex flex-col items-center justify-center space-y-4 sm:flex-row sm:space-x-6 sm:space-y-0">
-            <Link to="/search">
-              <Button size="lg" className="group min-w-[200px] h-14 text-lg shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:shadow-[0_0_30px_rgba(79,70,229,0.6)] transition-all duration-300">
-                Start Researching
-                <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
-              </Button>
-            </Link>
-            <Button variant="outline" size="lg" className="min-w-[200px] h-14 text-lg border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-600 backdrop-blur-sm">
-              View Demo
-            </Button>
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-stone-200 text-xs font-medium text-stone-600 mb-8 shadow-soft">
+            <Sparkles className="h-3 w-3 text-sage-600" />
+            AI-Powered Research Assistant
           </div>
 
-          {/* Floating Icons */}
-          <div className="mt-20 flex justify-center gap-8 opacity-50 grayscale transition-all duration-500 hover:grayscale-0 hover:opacity-100">
-            <div className="flex flex-col items-center gap-2 animate-float">
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                <Search className="h-6 w-6 text-indigo-400" />
-              </div>
-              <span className="text-xs text-slate-500 font-medium">Smart Search</span>
-            </div>
-            <div className="flex flex-col items-center gap-2 animate-float-delayed">
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                <FileText className="h-6 w-6 text-purple-400" />
-              </div>
-              <span className="text-xs text-slate-500 font-medium">PDF Analysis</span>
-            </div>
-            <div className="flex flex-col items-center gap-2 animate-float">
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                <Database className="h-6 w-6 text-pink-400" />
-              </div>
-              <span className="text-xs text-slate-500 font-medium">Knowledge Graph</span>
-            </div>
-          </div>
+          {/* Heading */}
+          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-stone-900 mb-6 leading-[1.1]">
+            Research,{' '}
+            <span className="text-gradient">accelerated.</span>
+          </h1>
+
+          {/* Subheading */}
+          <p className="text-lg sm:text-xl text-stone-500 leading-relaxed max-w-xl mx-auto mb-10">
+            Search academic papers, analyze documents, and generate citations — all with the power of AI.
+          </p>
+
+          {/* CTA */}
+          <Link
+            to="/search"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-stone-900 text-white text-sm font-medium hover:bg-stone-700 transition-colors shadow-soft group"
+          >
+            Start Researching
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+          </Link>
+        </motion.div>
+      </div>
+
+      {/* Bento Feature Grid */}
+      <div className="relative max-w-5xl mx-auto w-full px-6 pb-24">
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 md:grid-cols-3 gap-4"
+        >
+          {features.map((feature) => {
+            const Icon = feature.icon;
+            return (
+              <motion.div key={feature.label} variants={itemVariants}>
+                <Link to={feature.path} className="group block h-full">
+                  <div className="h-full bg-white rounded-2xl border border-stone-200 p-6 shadow-soft hover:shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-stone-300 cursor-pointer">
+                    <div className={`inline-flex p-2.5 rounded-xl mb-4 ${feature.color}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <h3 className="font-semibold text-stone-900 mb-2 text-base">{feature.label}</h3>
+                    <p className="text-sm text-stone-500 leading-relaxed">{feature.description}</p>
+                    <div className="mt-4 flex items-center text-sm font-medium text-stone-900 opacity-0 group-hover:opacity-100 transition-opacity gap-1">
+                      Open <ArrowRight className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            );
+          })}
         </motion.div>
       </div>
     </section>

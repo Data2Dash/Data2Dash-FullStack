@@ -1,45 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-stone-50 text-stone-900 antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  * {
+    @apply border-stone-200;
   }
 }
 
 @layer utilities {
-  .bg-grid-slate-100 {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='rgb(241 245 249)'%3e%3cpath d='M0 .5H31.5V32'/%3e%3c/svg%3e");
-  }
-  
-  .bg-grid-slate-900 {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='rgb(30 41 59 / 0.5)'%3e%3cpath d='M0 .5H31.5V32'/%3e%3c/svg%3e");
+  /* Subtle dot-grid pattern */
+  .bg-dot-pattern {
+    background-image: radial-gradient(circle, #d6d3d1 1px, transparent 1px);
+    background-size: 24px 24px;
   }
 
+  /* Glass morphism */
   .glass {
-    @apply bg-white/80 backdrop-blur-md border border-white/50 shadow-lg;
-  }
-  
-  .glass-dark {
-    @apply bg-slate-900/80 backdrop-blur-md border border-slate-800 shadow-lg;
+    @apply bg-white/80 backdrop-blur-md border border-white/60 shadow-soft;
   }
 
+  /* Sage gradient text */
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500;
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #38694e, #4a8463, #65a07e);
+  }
+
+  /* ChatGPT-style message area */
+  .chat-container {
+    @apply max-w-3xl mx-auto w-full;
+  }
+
+  /* Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-stone-300 rounded-full;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-stone-400;
   }
 }
 
+/* Fade-up animation for section entrances */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Slide in from right */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Typing pulse */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50%       { opacity: 1;   transform: scale(1); }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.5s ease-out both;
+}
+
+.animate-slide-right {
+  animation: slideInRight 0.3s ease-out both;
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.pulse-dot:nth-child(2) { animation-delay: 0.2s; }
+.pulse-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Floating animation for hero icons */
 @keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
+  0%   { transform: translateY(0px); }
+  50%  { transform: translateY(-8px); }
   100% { transform: translateY(0px); }
 }
 
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
-.animate-float-delayed {
-  animation: float 6s ease-in-out 3s infinite;
-}
+.animate-float { animation: float 5s ease-in-out infinite; }
+.animate-float-delayed { animation: float 5s ease-in-out 2.5s infinite; }

@@ -11,21 +11,42 @@ from agents.pdf_agent import PDFAgent
 from agents.search_agent import SearchAgent
 from agents.podcast_agent import PodcastAgent
 from agents.youtube_agent import YouTubeAgent
-from dotenv import load_dotenv
-load_dotenv(".env")
+from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
 import uvicorn
 
+# Auth imports
+from database import engine, Base
+from routers.auth import router as auth_router
+
 # Initialize FastAPI app
+# Create DB tables on startup
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(title="Youware AI Backend")
 
 # Configure CORS
+# NOTE: allow_origins=["*"] + allow_credentials=True is forbidden by the CORS spec.
+# Must list origins explicitly when credentials are used.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Create directories
+os.makedirs("data/uploads", exist_ok=True)
+
+# Mount static files
+app.mount("/api/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
 # Initialize Agents
 # Note: Ensure GROQ_API_KEY is set in environment variables
@@ -155,25 +176,31 @@ async def upload_pdf(
 ):
     agent = get_pdf_agent()
     
-    # Save file temporarily
-    temp_dir = "temp_uploads"
-    os.makedirs(temp_dir, exist_ok=True)
-    file_path = os.path.join(temp_dir, file.filename)
+    # Save file in session-specific directory
+    upload_dir = os.path.join("data", "uploads", session_id)
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, file.filename)
     
     try:
+        # Save the file permanently for the session
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Process PDF
+        # Process PDF (agent will use the permanent path)
         result = agent.process_pdf_with_name(file_path, session_id, file.filename)
         
-        # Clean up temp file
-        os.remove(file_path)
+        # Return accessible URL
+        file_url = f"http://localhost:8000/api/uploads/{session_id}/{file.filename}"
         
-        return {"message": result, "filename": file.filename}
+        return {
+            "message": result, 
+            "filename": file.filename,
+            "url": file_url
+        }
         
     except Exception as e:
-        if os.path.exists(file_path):
+        # Optional: clean up ONLY if the initial copy failed
+        if os.path.exists(file_path) and not os.path.getsize(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=str(e))
 

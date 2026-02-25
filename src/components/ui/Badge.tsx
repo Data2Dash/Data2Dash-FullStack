@@ -2,19 +2,20 @@ import React from 'react';
 import { clsx } from 'clsx';
 
 interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'secondary' | 'outline' | 'success';
+  variant?: 'default' | 'secondary' | 'outline' | 'success' | 'sage';
 }
 
 export function Badge({ className, variant = 'default', ...props }: BadgeProps) {
   return (
     <div
       className={clsx(
-        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
         {
-          'border-transparent bg-indigo-600 text-white hover:bg-indigo-700': variant === 'default',
-          'border-transparent bg-slate-100 text-slate-900 hover:bg-slate-200': variant === 'secondary',
-          'text-slate-950 border-slate-200': variant === 'outline',
-          'border-transparent bg-emerald-100 text-emerald-700': variant === 'success',
+          'bg-stone-900 text-white': variant === 'default',
+          'bg-stone-100 text-stone-600 border border-stone-200': variant === 'secondary',
+          'text-stone-700 border border-stone-200 bg-white': variant === 'outline',
+          'bg-emerald-50 text-emerald-700 border border-emerald-100': variant === 'success',
+          'bg-sage-100 text-sage-700 border border-sage-200': variant === 'sage',
         },
         className
       )}

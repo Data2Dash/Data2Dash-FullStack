@@ -10,6 +10,8 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from pydub import AudioSegment
 import edge_tts
+import static_ffmpeg
+static_ffmpeg.add_paths()
 
 # --- Structured Data Models ---
 class PodcastLine(BaseModel):
