@@ -8,7 +8,7 @@ const features = [
     icon: Search,
     label: 'Paper Search',
     description: 'Search millions of papers from arXiv, IEEE, and Semantic Scholar. Chat with any paper using AI.',
-    path: '/search',
+    path: '/',
     color: 'bg-stone-100 text-stone-700',
   },
   {
@@ -70,7 +70,7 @@ export function Hero() {
 
           {/* CTA */}
           <Link
-            to="/search"
+            to="/"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-stone-900 text-white text-sm font-medium hover:bg-stone-700 transition-colors shadow-soft group"
           >
             Start Researching

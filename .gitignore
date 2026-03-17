@@ -42,3 +42,13 @@ temp_uploads/
 dist/
 build/
 *.pyc
+
+# Database and Large Files
+*.db
+*.sqlite
+*.sqlite3
+*.bin
+*.pdf
+*.pkl
+knowledge_graph/**/*.bin
+temp_uploads/

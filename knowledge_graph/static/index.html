@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data2Dash — Knowledge Graph</title>
+
+  <!-- D3.js -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+
+  <style>
+    /* ── Reset & Base ───────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b0f1a;
+      --surface:   #111827;
+      --surface2:  #1a2236;
+      --border:    rgba(255,255,255,0.08);
+      --text:      #e2e8f0;
+      --muted:     #6b7280;
+      --accent:    #7c6af7;
+      --accent2:   #06b6d4;
+
+      /* Node type colors */
+      --c-person:       #f472b6;
+      --c-concept:      #818cf8;
+      --c-organization: #34d399;
+      --c-method:       #fbbf24;
+      --c-dataset:      #60a5fa;
+      --c-finding:      #f87171;
+      --c-technology:   #a78bfa;
+      --c-theory:       #fb923c;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    header {
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .logo-icon {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+
+    .logo-text { font-size: 15px; font-weight: 700; letter-spacing: 0.05em; }
+    .logo-text span { color: var(--accent2); }
+
+    .header-title {
+      font-size: 13px;
+      color: var(--muted);
+      padding-left: 16px;
+      border-left: 1px solid var(--border);
+    }
+
+    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+    .stats-bar {
+      display: flex; gap: 12px;
+    }
+
+    .stat-chip {
+      font-size: 11px; color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      display: flex; align-items: center; gap: 5px;
+    }
+
+    .stat-chip strong { color: var(--text); }
+
+    /* ── Main Layout ─────────────────────────────── */
+    .workspace {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ─────────────────────────────────── */
+    .sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-section {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-section h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* ── Upload zone ─────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed rgba(124,106,247,0.4);
+      border-radius: 12px;
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(124,106,247,0.04);
+      position: relative;
+    }
+
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(124,106,247,0.10);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+
+    .upload-icon { font-size: 32px; margin-bottom: 10px; }
+
+    .upload-label {
+      font-size: 13px; color: var(--text); font-weight: 500;
+    }
+
+    .upload-sub {
+      font-size: 11px; color: var(--muted); margin-top: 4px;
+    }
+
+    .upload-filename {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 500;
+      padding: 4px 10px;
+      background: rgba(124,106,247,0.15);
+      border-radius: 6px;
+      display: none;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 12px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #5b4de0);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      opacity: 0.9; transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(124,106,247,0.4);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.4; cursor: not-allowed; transform: none;
+    }
+
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover { background: rgba(255,255,255,0.06); }
+
+    /* ── Legend ──────────────────────────────────── */
+    .legend { display: flex; flex-direction: column; gap: 7px; }
+
+    .legend-item {
+      display: flex; align-items: center; gap: 9px;
+      font-size: 12px; color: var(--text);
+    }
+
+    .legend-dot {
+      width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+    }
+
+    /* ── Node Info Panel ─────────────────────────── */
+    .info-panel {
+      flex: 1; padding: 20px; overflow-y: auto;
+    }
+
+    .info-panel h3 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--muted); margin-bottom: 14px;
+    }
+
+    .node-info-card {
+      display: none;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .node-info-card.active { display: block; }
+
+    .node-info-type {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+      font-weight: 700; margin-bottom: 6px;
+    }
+
+    .node-info-label {
+      font-size: 16px; font-weight: 700; margin-bottom: 8px;
+    }
+
+    .node-info-desc {
+      font-size: 12px; color: var(--muted); line-height: 1.6;
+    }
+
+    .node-info-connections {
+      margin-top: 12px; font-size: 11px; color: var(--muted);
+      padding-top: 12px; border-top: 1px solid var(--border);
+    }
+
+    .empty-info {
+      font-size: 12px; color: var(--muted); text-align: center;
+      padding: 20px 0;
+    }
+
+    /* ── Graph Canvas ────────────────────────────── */
+    .graph-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #graph-svg {
+      width: 100%; height: 100%;
+    }
+
+    /* ── Loading Overlay ─────────────────────────── */
+    .loading-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(11,15,26,0.85);
+      backdrop-filter: blur(4px);
+      z-index: 50;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .loading-overlay.active { display: flex; }
+
+    .spinner {
+      width: 52px; height: 52px;
+      border: 3px solid rgba(124,106,247,0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text { font-size: 14px; color: var(--text); font-weight: 500; }
+    .loading-sub { font-size: 12px; color: var(--muted); text-align: center; max-width: 260px; }
+
+    /* ── Progress steps ──────────────────────────── */
+    .progress-steps {
+      display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
+    }
+
+    .step-item {
+      font-size: 12px; color: var(--muted);
+      display: flex; align-items: center; gap: 8px;
+      opacity: 0.4; transition: opacity 0.3s;
+    }
+
+    .step-item.active { opacity: 1; color: var(--accent); }
+    .step-item.done   { opacity: 1; color: var(--c-organization); }
+    .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+    /* ── Empty / Error state ─────────────────────── */
+    .empty-state {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px;
+      pointer-events: none;
+    }
+
+    .empty-state-icon { font-size: 56px; opacity: 0.15; }
+    .empty-state-text { font-size: 15px; color: var(--muted); font-weight: 500; }
+    .empty-state-sub  { font-size: 12px; color: var(--muted); opacity: 0.6; text-align: center; max-width: 280px; }
+
+    /* ── Controls bar (zoom) ─────────────────────── */
+    .graph-controls {
+      position: absolute; bottom: 20px; right: 20px;
+      display: flex; flex-direction: column; gap: 6px;
+      z-index: 5;
+    }
+
+    .ctrl-btn {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .ctrl-btn:hover { background: var(--surface2); border-color: var(--accent); }
+
+    /* ── Error toast ─────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #ef4444;
+      color: white; font-size: 13px; font-weight: 500;
+      padding: 10px 20px; border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(239,68,68,0.3);
+      z-index: 100;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+
+    .toast.show { opacity: 1; }
+
+    /* ── Tooltip ─────────────────────────────────── */
+    .tooltip {
+      position: fixed;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--text);
+      max-width: 220px;
+      pointer-events: none;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.15s;
+      line-height: 1.5;
+    }
+
+    .tooltip.visible { opacity: 1; }
+    .tooltip-type { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .tooltip-label { font-size: 13px; font-weight: 700; margin: 2px 0 4px; }
+    .tooltip-desc { font-size: 11px; color: var(--muted); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ┌─────────────── Header ──────────────────────────────────┐ -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🕸️</div>
+    <span class="logo-text">DATA<span>2</span>DASH</span>
+  </div>
+  <span class="header-title">Knowledge Graph Explorer</span>
+
+  <div class="header-actions">
+    <div class="stats-bar" id="statsBar" style="display:none">
+      <div class="stat-chip">📄 <strong id="statPages">0</strong> pages</div>
+      <div class="stat-chip">🔵 <strong id="statNodes">0</strong> nodes</div>
+      <div class="stat-chip">🔗 <strong id="statEdges">0</strong> edges</div>
+    </div>
+  </div>
+</header>
+
+<!-- ┌──────────────── Workspace ──────────────────────────────┐ -->
+<div class="workspace">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h3>Upload Document</h3>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".pdf" />
+        <div class="upload-icon">📄</div>
+        <div class="upload-label">Drop PDF here or click to browse</div>
+        <div class="upload-sub">Research papers, reports, textbooks</div>
+        <div class="upload-filename" id="uploadFilename"></div>
+      </div>
+      <button class="btn btn-primary" id="generateBtn" disabled>
+        ✨ Generate Knowledge Graph
+      </button>
+      <button class="btn btn-secondary" id="resetBtn" style="display:none">
+        🔄 Reset
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Node Types</h3>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--c-person)"></div>Person</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--c-concept)"></div>Concept</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--c-organization)"></div>Organization</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--c-method)"></div>Method</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--c-dataset)"></div>Dataset</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--c-finding)"></div>Finding</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--c-technology)"></div>Technology</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--c-theory)"></div>Theory</div>
+      </div>
+    </div>
+
+    <div class="info-panel">
+      <h3>Node Details</h3>
+      <div class="node-info-card" id="nodeInfoCard">
+        <div class="node-info-type" id="nodeType"></div>
+        <div class="node-info-label" id="nodeLabel"></div>
+        <div class="node-info-desc" id="nodeDesc"></div>
+        <div class="node-info-connections" id="nodeConnections"></div>
+      </div>
+      <div class="empty-info" id="emptyInfo">Click a node to see details</div>
+    </div>
+  </div>
+
+  <!-- Graph Canvas -->
+  <div class="graph-container" id="graphContainer">
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-state-icon">🕸️</div>
+      <div class="empty-state-text">No graph yet</div>
+      <div class="empty-state-sub">Upload a PDF and click "Generate Knowledge Graph" to extract entities and relationships</div>
+    </div>
+
+    <!-- D3 SVG -->
+    <svg id="graph-svg"></svg>
+
+    <!-- Loading -->
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+      <div class="loading-text">Generating knowledge graph…</div>
+      <div class="progress-steps">
+        <div class="step-item" id="step1"><div class="step-dot"></div>Parsing PDF document</div>
+        <div class="step-item" id="step2"><div class="step-dot"></div>Extracting entities with AI</div>
+        <div class="step-item" id="step3"><div class="step-dot"></div>Mapping relationships</div>
+        <div class="step-item" id="step4"><div class="step-dot"></div>Building graph layout</div>
+      </div>
+    </div>
+
+    <!-- Zoom Controls -->
+    <div class="graph-controls">
+      <button class="ctrl-btn" id="zoomInBtn" title="Zoom In">+</button>
+      <button class="ctrl-btn" id="zoomFitBtn" title="Fit to screen">⊡</button>
+      <button class="ctrl-btn" id="zoomOutBtn" title="Zoom Out">−</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip">
+  <div class="tooltip-type" id="ttType"></div>
+  <div class="tooltip-label" id="ttLabel"></div>
+  <div class="tooltip-desc" id="ttDesc"></div>
+</div>
+
+<!-- Error Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ──────────────────────────────────────────────────────────────
+// Config
+// ──────────────────────────────────────────────────────────────
+const API_BASE = 'http://localhost:8001';
+
+const TYPE_COLOR = {
+  Person:       'var(--c-person)',
+  Concept:      'var(--c-concept)',
+  Organization: 'var(--c-organization)',
+  Method:       'var(--c-method)',
+  Dataset:      'var(--c-dataset)',
+  Finding:      'var(--c-finding)',
+  Technology:   'var(--c-technology)',
+  Theory:       'var(--c-theory)',
+};
+
+const TYPE_COLOR_HEX = {
+  Person:       '#f472b6',
+  Concept:      '#818cf8',
+  Organization: '#34d399',
+  Method:       '#fbbf24',
+  Dataset:      '#60a5fa',
+  Finding:      '#f87171',
+  Technology:   '#a78bfa',
+  Theory:       '#fb923c',
+};
+
+// ──────────────────────────────────────────────────────────────
+// DOM refs
+// ──────────────────────────────────────────────────────────────
+const fileInput     = document.getElementById('fileInput');
+const uploadZone    = document.getElementById('uploadZone');
+const uploadFilename= document.getElementById('uploadFilename');
+const generateBtn   = document.getElementById('generateBtn');
+const resetBtn      = document.getElementById('resetBtn');
+const loadingOverlay= document.getElementById('loadingOverlay');
+const emptyState    = document.getElementById('emptyState');
+const statsBar      = document.getElementById('statsBar');
+const toast         = document.getElementById('toast');
+const tooltip       = document.getElementById('tooltip');
+const nodeInfoCard  = document.getElementById('nodeInfoCard');
+const emptyInfo     = document.getElementById('emptyInfo');
+
+let selectedFile = null;
+let zoomBehavior = null;
+let svg = null, gMain = null;
+let simulation = null;
+let graphData = null;
+
+// ──────────────────────────────────────────────────────────────
+// File handling
+// ──────────────────────────────────────────────────────────────
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) selectFile(file);
+});
+
+uploadZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  uploadZone.classList.add('drag-over');
+});
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.pdf')) selectFile(file);
+  else showToast('Please drop a PDF file');
+});
+
+function selectFile(file) {
+  selectedFile = file;
+  uploadFilename.textContent = '📎 ' + file.name;
+  uploadFilename.style.display = 'block';
+  generateBtn.disabled = false;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Generate graph
+// ──────────────────────────────────────────────────────────────
+generateBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  startLoading();
+
+  try {
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    // Animate steps
+    animateStep(1, 800);
+    animateStep(2, 1800);
+    animateStep(3, 3000);
+
+    const res = await fetch(`${API_BASE}/extract-graph`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Server error');
+    }
+
+    const data = await res.json();
+    graphData = data;
+
+    animateStep(4, 0);
+    await sleep(600);
+    stopLoading();
+
+    document.getElementById('statPages').textContent = data.page_count;
+    document.getElementById('statNodes').textContent = data.node_count;
+    document.getElementById('statEdges').textContent = data.edge_count;
+    statsBar.style.display = 'flex';
+    resetBtn.style.display = 'block';
+    generateBtn.style.display = 'none';
+    emptyState.style.display = 'none';
+
+    renderGraph(data.graph);
+
+  } catch (err) {
+    stopLoading();
+    showToast('Error: ' + err.message);
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  selectedFile = null;
+  fileInput.value = '';
+  uploadFilename.style.display = 'none';
+  generateBtn.disabled = true;
+  generateBtn.style.display = 'block';
+  resetBtn.style.display = 'none';
+  statsBar.style.display = 'none';
+  emptyState.style.display = 'flex';
+  nodeInfoCard.classList.remove('active');
+  emptyInfo.style.display = 'block';
+  if (simulation) simulation.stop();
+  d3.select('#graph-svg').selectAll('*').remove();
+  graphData = null;
+});
+
+// ──────────────────────────────────────────────────────────────
+// D3 Graph Rendering
+// ──────────────────────────────────────────────────────────────
+function renderGraph(graph) {
+  const container = document.getElementById('graphContainer');
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  // Clear previous graph
+  d3.select('#graph-svg').selectAll('*').remove();
+
+  svg = d3.select('#graph-svg')
+    .attr('width', W)
+    .attr('height', H);
+
+  // ── Defs: arrowheads + glow filter
+  const defs = svg.append('defs');
+
+  // Glow filter
+  const filter = defs.append('filter').attr('id', 'glow');
+  filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'coloredBlur');
+  const feMerge = filter.append('feMerge');
+  feMerge.append('feMergeNode').attr('in', 'coloredBlur');
+  feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+  // Arrow markers (one per type)
+  Object.entries(TYPE_COLOR_HEX).forEach(([type, color]) => {
+    defs.append('marker')
+      .attr('id', `arrow-${type}`)
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 28)
+      .attr('refY', 0)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', color)
+        .attr('opacity', 0.8);
+  });
+
+  // Default arrow for unknown types
+  defs.append('marker')
+    .attr('id', 'arrow-default')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 28).attr('refY', 0)
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-5L10,0L0,5')
+    .attr('fill', '#6b7280').attr('opacity', 0.7);
+
+  // ── Build node degree map for sizing
+  const degreeMap = {};
+  graph.nodes.forEach(n => degreeMap[n.id] = 0);
+  graph.edges.forEach(e => {
+    degreeMap[e.source] = (degreeMap[e.source] || 0) + 1;
+    degreeMap[e.target] = (degreeMap[e.target] || 0) + 1;
+  });
+
+  // ── Main group (for zoom)
+  gMain = svg.append('g').attr('class', 'g-main');
+
+  // ── Zoom behavior
+  zoomBehavior = d3.zoom()
+    .scaleExtent([0.2, 4])
+    .on('zoom', (event) => gMain.attr('transform', event.transform));
+  svg.call(zoomBehavior);
+
+  // ── Force simulation
+  const nodes = graph.nodes.map(n => ({ ...n, degree: degreeMap[n.id] || 1 }));
+  const edges = graph.edges.map(e => ({ ...e }));
+
+  // Find target node type for arrow color
+  const nodeTypeMap = {};
+  nodes.forEach(n => nodeTypeMap[n.id] = n.type);
+
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(edges)
+      .id(d => d.id)
+      .distance(d => 120 + (degreeMap[d.source?.id || d.source] || 1) * 8)
+    )
+    .force('charge', d3.forceManyBody().strength(-320))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide().radius(d => nodeRadius(d.degree) + 14));
+
+  // ── Edge group
+  const linkGroup = gMain.append('g').attr('class', 'links');
+
+  const link = linkGroup.selectAll('line')
+    .data(edges)
+    .enter().append('line')
+      .attr('stroke', d => {
+        const srcType = nodeTypeMap[d.source?.id || d.source];
+        return TYPE_COLOR_HEX[srcType] || '#6b7280';
+      })
+      .attr('stroke-opacity', 0.5)
+      .attr('stroke-width', 1.5)
+      .attr('marker-end', d => {
+        const srcType = nodeTypeMap[d.source?.id || d.source];
+        return `url(#arrow-${srcType || 'default'})`;
+      });
+
+  // ── Edge labels
+  const edgeLabelGroup = gMain.append('g').attr('class', 'edge-labels');
+  const edgeLabel = edgeLabelGroup.selectAll('text')
+    .data(edges)
+    .enter().append('text')
+      .attr('font-size', 9)
+      .attr('fill', 'rgba(255,255,255,0.35)')
+      .attr('text-anchor', 'middle')
+      .attr('pointer-events', 'none')
+      .text(d => d.label);
+
+  // ── Node group
+  const nodeGroup = gMain.append('g').attr('class', 'nodes');
+
+  const node = nodeGroup.selectAll('g')
+    .data(nodes)
+    .enter().append('g')
+      .attr('class', 'node-group')
+      .style('cursor', 'pointer')
+      .call(d3.drag()
+        .on('start', dragStart)
+        .on('drag',  dragged)
+        .on('end',   dragEnd))
+      .on('click', (event, d) => {
+        event.stopPropagation();
+        selectNode(d, edges);
+      })
+      .on('mouseover', (event, d) => showTooltip(event, d))
+      .on('mousemove', (event) => moveTooltip(event))
+      .on('mouseout', () => hideTooltip());
+
+  // Outer glow ring
+  node.append('circle')
+    .attr('r', d => nodeRadius(d.degree) + 5)
+    .attr('fill', 'none')
+    .attr('stroke', d => TYPE_COLOR_HEX[d.type] || '#818cf8')
+    .attr('stroke-opacity', 0.2)
+    .attr('stroke-width', 3)
+    .attr('class', 'node-glow');
+
+  // Main circle
+  node.append('circle')
+    .attr('r', d => nodeRadius(d.degree))
+    .attr('fill', d => TYPE_COLOR_HEX[d.type] || '#818cf8')
+    .attr('fill-opacity', 0.9)
+    .attr('filter', 'url(#glow)')
+    .attr('stroke', '#0b0f1a')
+    .attr('stroke-width', 2);
+
+  // Node label
+  node.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', d => nodeRadius(d.degree) + 14)
+    .attr('font-size', d => Math.max(9, Math.min(12, 9 + d.degree * 0.5)))
+    .attr('fill', 'rgba(255,255,255,0.85)')
+    .attr('pointer-events', 'none')
+    .attr('font-weight', '500')
+    .text(d => truncate(d.label, 18));
+
+  // Node icon (first letter of type)
+  node.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '0.35em')
+    .attr('font-size', d => nodeRadius(d.degree) * 0.75)
+    .attr('fill', 'rgba(0,0,0,0.6)')
+    .attr('font-weight', '700')
+    .attr('pointer-events', 'none')
+    .text(d => typeEmoji(d.type));
+
+  // ── Tick
+  simulation.on('tick', () => {
+    link
+      .attr('x1', d => d.source.x)
+      .attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x)
+      .attr('y2', d => d.target.y);
+
+    edgeLabel
+      .attr('x', d => (d.source.x + d.target.x) / 2)
+      .attr('y', d => (d.source.y + d.target.y) / 2);
+
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  // Deselect on background click
+  svg.on('click', () => deselectNode());
+}
+
+// ──────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────
+function nodeRadius(degree) { return Math.max(18, Math.min(36, 18 + degree * 2.5)); }
+function truncate(str, n) { return str.length > n ? str.slice(0, n - 1) + '…' : str; }
+
+function typeEmoji(type) {
+  const map = {
+    Person: '👤', Concept: '💡', Organization: '🏢',
+    Method: '⚙️', Dataset: '🗄️', Finding: '🔍',
+    Technology: '🖥️', Theory: '📐',
+  };
+  return '';  // Letters look cleaner at small sizes
+}
+
+// ──────────────────────────────────────────────────────────────
+// Node selection
+// ──────────────────────────────────────────────────────────────
+function selectNode(d, edges) {
+  const connections = edges.filter(e =>
+    (e.source.id || e.source) === d.id || (e.target.id || e.target) === d.id
+  ).length;
+
+  document.getElementById('nodeType').textContent = d.type;
+  document.getElementById('nodeType').style.color = TYPE_COLOR_HEX[d.type] || '#818cf8';
+  document.getElementById('nodeLabel').textContent = d.label;
+  document.getElementById('nodeDesc').textContent = d.description || 'No description available.';
+  document.getElementById('nodeConnections').textContent = `${connections} connection${connections !== 1 ? 's' : ''}`;
+
+  nodeInfoCard.classList.add('active');
+  emptyInfo.style.display = 'none';
+}
+
+function deselectNode() {
+  nodeInfoCard.classList.remove('active');
+  emptyInfo.style.display = 'block';
+}
+
+// ──────────────────────────────────────────────────────────────
+// Drag
+// ──────────────────────────────────────────────────────────────
+function dragStart(event, d) {
+  if (!event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x; d.fy = d.y;
+}
+function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+function dragEnd(event, d) {
+  if (!event.active) simulation.alphaTarget(0);
+  d.fx = null; d.fy = null;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Zoom controls
+// ──────────────────────────────────────────────────────────────
+document.getElementById('zoomInBtn').addEventListener('click', () => {
+  if (!svg) return;
+  svg.transition().duration(250).call(zoomBehavior.scaleBy, 1.4);
+});
+document.getElementById('zoomOutBtn').addEventListener('click', () => {
+  if (!svg) return;
+  svg.transition().duration(250).call(zoomBehavior.scaleBy, 0.7);
+});
+document.getElementById('zoomFitBtn').addEventListener('click', () => {
+  if (!svg || !gMain) return;
+  const container = document.getElementById('graphContainer');
+  const bounds = gMain.node().getBBox();
+  const W = container.clientWidth, H = container.clientHeight;
+  const scale = 0.85 * Math.min(W / bounds.width, H / bounds.height);
+  const tx = (W - scale * (bounds.x * 2 + bounds.width)) / 2;
+  const ty = (H - scale * (bounds.y * 2 + bounds.height)) / 2;
+  svg.transition().duration(500).call(
+    zoomBehavior.transform,
+    d3.zoomIdentity.translate(tx, ty).scale(scale)
+  );
+});
+
+// ──────────────────────────────────────────────────────────────
+// Tooltip
+// ──────────────────────────────────────────────────────────────
+function showTooltip(event, d) {
+  document.getElementById('ttType').textContent = d.type;
+  document.getElementById('ttLabel').textContent = d.label;
+  document.getElementById('ttDesc').textContent = d.description ? truncate(d.description, 120) : '';
+  tooltip.classList.add('visible');
+  moveTooltip(event);
+}
+function moveTooltip(event) {
+  const x = event.clientX + 14;
+  const y = event.clientY - 10;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top  = y + 'px';
+}
+function hideTooltip() { tooltip.classList.remove('visible'); }
+
+// ──────────────────────────────────────────────────────────────
+// Loading
+// ──────────────────────────────────────────────────────────────
+const steps = ['step1','step2','step3','step4'];
+
+function startLoading() {
+  steps.forEach(s => {
+    const el = document.getElementById(s);
+    el.classList.remove('active','done');
+  });
+  loadingOverlay.classList.add('active');
+  generateBtn.disabled = true;
+  document.getElementById('step1').classList.add('active');
+}
+
+function stopLoading() {
+  loadingOverlay.classList.remove('active');
+}
+
+function animateStep(n, delay) {
+  setTimeout(() => {
+    const prev = document.getElementById(`step${n-1}`);
+    const curr = document.getElementById(`step${n}`);
+    if (prev) { prev.classList.remove('active'); prev.classList.add('done'); }
+    if (curr) curr.classList.add('active');
+  }, delay);
+}
+
+// ──────────────────────────────────────────────────────────────
+// Toast
+// ──────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ──────────────────────────────────────────────────────────────
+// Resize handler
+// ──────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  if (graphData) renderGraph(graphData.graph);
+});
+</script>
+</body>
+</html>

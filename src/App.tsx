@@ -3,7 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
-import { HomePage } from './pages/HomePage';
+
+import { ChatPage } from './pages/ChatPage.tsx';
 import { SearchPage } from './pages/SearchPage';
 import { UploadPage } from './pages/UploadPage';
 import { CitationPage } from './pages/CitationPage';
@@ -25,7 +26,7 @@ function App() {
 
             {/* Protected routes */}
             <Route path="/" element={
-              <ProtectedRoute><HomePage /></ProtectedRoute>
+              <ProtectedRoute><ChatPage /></ProtectedRoute>
             } />
             <Route path="/search" element={
               <ProtectedRoute><SearchPage /></ProtectedRoute>

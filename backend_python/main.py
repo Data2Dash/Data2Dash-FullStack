@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from agents.pdf_agent import PDFAgent
 from agents.search_agent import SearchAgent
+from agents.chat_agent import ChatAgent
 from agents.podcast_agent import PodcastAgent
 from agents.youtube_agent import YouTubeAgent
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +26,9 @@ from routers.auth import router as auth_router
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Youware AI Backend")
+
+# Register routers
+app.include_router(auth_router)
 
 # Configure CORS
 # NOTE: allow_origins=["*"] + allow_credentials=True is forbidden by the CORS spec.
@@ -99,9 +103,24 @@ def get_youtube_agent():
         youtube_agent = YouTubeAgent(api_key=YOUTUBE_API_KEY)
     return youtube_agent
 
+chat_agent = None
+
+def get_chat_agent():
+    global chat_agent
+    if chat_agent is None:
+        if not GROQ_API_KEY:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured for chat")
+        chat_agent = ChatAgent(groq_api_key=GROQ_API_KEY)
+    return chat_agent
+
 # Pydantic Models
 class SearchRequest(BaseModel):
     query: str
+
+class AIChatRequest(BaseModel):
+    query: str
+    history: Optional[List[Dict[str, str]]] = []
+    session_id: Optional[str] = None
 
 class PDFChatRequest(BaseModel):
     query: str
@@ -156,6 +175,15 @@ def search(request: SearchRequest):
     agent = get_search_agent()
     try:
         result = agent.run(request.query)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat/ai")
+def chat_ai(request: AIChatRequest):
+    agent = get_chat_agent()
+    try:
+        result = agent.run(request.query, request.history, request.session_id)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
