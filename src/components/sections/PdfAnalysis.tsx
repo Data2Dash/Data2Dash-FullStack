@@ -156,6 +156,8 @@ export function PdfAnalysis() {
               <PaperInteractionPanel
                 title={currentFile?.name ?? "Document Chat"}
                 subtitle={currentFile ? `Analyzing ${currentFile.name}` : "Upload a PDF to start"}
+                sessionId={sessionId}
+                fileName={currentFile?.name}
                 initialMessage={
                   <>
                     I'm ready to help you analyze your documents. {currentFile ? `Tell me what you'd like to know about **${currentFile.name}**.` : "Upload PDF documents to start chatting."}
@@ -165,10 +167,13 @@ export function PdfAnalysis() {
                   const response = await fetch('http://localhost:8000/api/pdf/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: message, session_id: sessionId }),
+                    body: JSON.stringify({
+                      query: message,
+                      session_id: sessionId,
+                      fileName: currentFile?.name
+                    }),
                   });
-                  const data = await response.json();
-                  return { response: data.response ?? data };
+                  return await response.json();
                 }}
               />
             </div>
