@@ -7,12 +7,9 @@ import arxiv
 
 class SearchAgent:
     def __init__(self, groq_api_key):
-        self.llm = ChatGroq(
-            groq_api_key=groq_api_key, 
-            model_name="llama-3.3-70b-versatile",
-            temperature=0
-        )
-        
+        # Use a faster model for the search agent to improve responsiveness
+        self.llm = ChatGroq(groq_api_key=groq_api_key, model_name="llama-3.1-8b-instant", temperature=0)
+        self.max_tools = 2  # Reduced for speed
         # Initialize Tools
         api_wrapper_wiki = WikipediaAPIWrapper(top_k_results=2, doc_content_chars_max=1500)
         self.wiki = WikipediaQueryRun(api_wrapper=api_wrapper_wiki)

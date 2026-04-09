@@ -12,6 +12,7 @@ from agents.search_agent import SearchAgent
 from agents.chat_agent import ChatAgent
 from agents.podcast_agent import PodcastAgent
 from agents.youtube_agent import YouTubeAgent
+from agents.vision_agent import VisionAgent
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -46,6 +47,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register routers
+app.include_router(auth_router)
+
 # Create directories
 os.makedirs("data/uploads", exist_ok=True)
 
@@ -67,6 +71,7 @@ pdf_agent = None
 search_agent = None
 podcast_agent = None
 youtube_agent = None
+vision_agent = None
 
 # Podcast task storage
 podcast_tasks: Dict[str, dict] = {}
@@ -112,6 +117,14 @@ def get_chat_agent():
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured for chat")
         chat_agent = ChatAgent(groq_api_key=GROQ_API_KEY)
     return chat_agent
+
+def get_vision_agent():
+    global vision_agent
+    if vision_agent is None:
+        if not GROQ_API_KEY:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+        vision_agent = VisionAgent(groq_api_key=GROQ_API_KEY)
+    return vision_agent
 
 # Pydantic Models
 class SearchRequest(BaseModel):
@@ -163,6 +176,16 @@ class YouTubeVideo(BaseModel):
 class YouTubeSearchResponse(BaseModel):
     videos: List[YouTubeVideo]
     query_used: str
+
+class FigureAnalysisRequest(BaseModel):
+    image_path: str
+    query: Optional[str] = None
+    session_id: str
+
+class ImportPaperRequest(BaseModel):
+    paper_id: str
+    session_id: str
+    title: str
 
 # Endpoints
 
@@ -249,6 +272,81 @@ def clear_context(session_id: str):
     agent = get_pdf_agent()
     agent.clear_context(session_id)
     return {"message": "Context cleared successfully"}
+
+# Figure Analysis Endpoints
+
+@app.get("/api/pdf/figures")
+def get_figures(session_id: str, filename: str):
+    """Extract and list figures from a PDF"""
+    agent = get_vision_agent()
+    pdf_path = os.path.join("data", "uploads", session_id, filename)
+    
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF not found")
+        
+    figure_paths = agent.extract_figures(pdf_path, session_id)
+    
+    # Convert local paths to accessible URLs
+    figure_urls = []
+    for path in figure_paths:
+        # path is like data/uploads/{session_id}/figures/{img_name}
+        rel_path = path.replace("\\", "/").replace("data/uploads/", "")
+        figure_urls.append({
+            "url": f"http://localhost:8000/api/uploads/{rel_path}",
+            "local_path": path
+        })
+        
+    return {"figures": figure_urls}
+
+@app.post("/api/pdf/analyze-figure")
+async def analyze_figure(request: FigureAnalysisRequest):
+    """Analyze a specific figure using vision models"""
+    agent = get_vision_agent()
+    if not os.path.exists(request.image_path):
+        raise HTTPException(status_code=404, detail="Image not found")
+        
+    try:
+        analysis = await agent.analyze_figure(request.image_path, request.query)
+        return {"analysis": analysis}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/pdf/import")
+async def import_paper(request: ImportPaperRequest):
+    """Download a paper from ArXiv and initiate figure extraction"""
+    try:
+        import arxiv
+        client = arxiv.Client()
+        search = arxiv.Search(id_list=[request.paper_id])
+        result = next(client.results(search))
+        
+        # Save directory
+        upload_dir = os.path.join("data", "uploads", request.session_id)
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Filename logic: use a sanitized title or paper_id
+        safe_title = re.sub(r'[^\w\s-]', '', request.title).strip().replace(' ', '_')[:50]
+        filename = f"{safe_title}_{request.paper_id}.pdf"
+        file_path = os.path.join(upload_dir, filename)
+        
+        # Download
+        result.download_pdf(dirpath=upload_dir, filename=filename)
+        
+        # Extract figures immediately
+        agent = get_vision_agent()
+        figure_paths = agent.extract_figures(file_path, request.session_id)
+        
+        # Process with PDF agent for chat as well
+        pdf_agent = get_pdf_agent()
+        pdf_agent.process_pdf_with_name(file_path, request.session_id, filename)
+        
+        return {
+            "message": "Paper imported and processed successfully",
+            "filename": filename,
+            "figure_count": len(figure_paths)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to import paper: {str(e)}")
 
 # Podcast Endpoints
 
