@@ -4,6 +4,7 @@ from langchain_community.tools import ArxivQueryRun, WikipediaQueryRun, DuckDuck
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 import re
 import arxiv
+import itertools
 
 class SearchAgent:
     def __init__(self, groq_api_key):
@@ -34,31 +35,47 @@ class SearchAgent:
             }
         }
 
-    def search_arxiv(self, query, max_results=6):
-        """Search Arxiv and return structured data"""
+    def search_academic_papers(self, query, page=1, per_page=10):
+        """Search academic papers using Arxiv, supporting pagination"""
         try:
+            offset = (page - 1) * per_page
             client = arxiv.Client()
             search = arxiv.Search(
                 query=query,
-                max_results=max_results,
+                max_results=offset + per_page,
                 sort_by=arxiv.SortCriterion.Relevance
             )
             
+            # Fetch results using generator and slice only proper page
             results = []
-            for result in client.results(search):
+            generator = client.results(search)
+            for result in itertools.islice(generator, offset, offset + per_page):
                 results.append({
                     "id": result.entry_id.split('/')[-1],
                     "title": result.title,
                     "authors": ", ".join([a.name for a in result.authors]),
                     "date": result.published.strftime("%Y-%m-%d"),
-                    "source": "arXiv",
+                    "source": "ArXiv",
                     "abstract": result.summary.replace("\n", " "),
-                    "url": result.entry_id
+                    "url": result.pdf_url or result.entry_id
                 })
-            return results
+                
+            return {
+                "papers": results,
+                "total": 10000, # Fake large number since ArXiv API doesn't return total count easily
+                "page": page,
+                "per_page": per_page,
+                "has_more": len(results) == per_page
+            }
         except Exception as e:
-            print(f"Arxiv search error: {e}")
-            return []
+            print(f"Academic search error: {e}")
+            return {
+                "papers": [],
+                "total": 0,
+                "page": page,
+                "per_page": per_page,
+                "has_more": False
+            }
 
     def _get_system_prompt(self):
         tools_desc = "\n".join([

@@ -8,6 +8,7 @@ import { Input } from '../ui/Input';
 import { generatePodcast, pollPodcastStatus, getPodcastAudioUrl, type PodcastStatusResponse } from '../../api/podcastService';
 import { searchYouTubeVideos, type YouTubeVideo } from '../../api/youtubeService';
 import { clsx } from 'clsx';
+import ReactMarkdown from 'react-markdown';
 
 interface Citation {
   content: string;
@@ -323,6 +324,209 @@ function DiagramTab({ sessionId, fileName }: { sessionId: string; fileName: stri
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Summarize Tab
+// ────────────────────────────────────────────────────────────────────────────
+function SummarizeTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileName: string | null; pdfUrl: string | null }) {
+  const [data, setData] = useState<{title: string; summary: string; report_url: string | null} | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (fileName && fileName !== 'paper.pdf') {
+      fetchSummary();
+    }
+  }, [sessionId, fileName]);
+
+  const fetchSummary = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/pdf/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, filename: fileName, pdf_url: pdfUrl }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setData(result);
+      } else {
+        setError(result.detail || "Failed to generate summary");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error connecting to server");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading || fileName === null) return (
+    <div className="flex flex-col items-center justify-center h-full gap-3">
+      <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
+      <p className="text-sm text-stone-500">Generating comprehensive summary...</p>
+    </div>
+  );
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center h-full gap-3">
+      <p className="text-sm text-red-500 text-center max-w-sm">{error}</p>
+      <Button onClick={fetchSummary} variant="outline">Try Again</Button>
+    </div>
+  );
+
+  if (!data) return null;
+
+  return (
+    <div className="flex flex-col h-full bg-stone-50">
+      <div className="px-5 py-4 bg-white border-b border-stone-200 shadow-sm flex items-center justify-between z-10 shrink-0">
+         <h4 className="font-semibold text-stone-900 truncate max-w-[60%]">{data.title}</h4>
+         {data.report_url && (
+            <a href={data.report_url} download className="flex items-center gap-2 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs font-semibold hover:bg-stone-800 transition-colors">
+              <Download className="h-3.5 w-3.5" /> Download Report
+            </a>
+         )}
+      </div>
+      <div className="p-6 overflow-y-auto custom-scrollbar prose prose-sm prose-stone max-w-none">
+        <ReactMarkdown>{data.summary || "Summary not available."}</ReactMarkdown>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Knowledge Graph Tab
+// ────────────────────────────────────────────────────────────────────────────
+function KnowledgeGraphTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileName: string | null; pdfUrl: string | null }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [chatNode, setChatNode] = useState<string | null>(null);
+  const [chatResponse, setChatResponse] = useState<string | null>(null);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
+  useEffect(() => {
+    const handleMessage = async (e: MessageEvent) => {
+      if (e.data && e.data.type === 'kg_node_click') {
+        const node = e.data.node;
+        setChatNode(node);
+        setIsChatLoading(true);
+        setChatResponse(null);
+
+        try {
+          const res = await fetch('http://localhost:8000/api/pdf/knowledge-graph/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: sessionId,
+              filename: fileName,
+              pdf_url: pdfUrl,
+              query: `Explain everything you know about "${node}". What are its definitions, its properties, and crucially, what are its relationships with other entities in this paper? Provide detailed context for how it connects to the broader graph.`
+            })
+          });
+          const data = await res.json();
+          if (res.ok) setChatResponse(data.answer);
+          else setChatResponse(`Error: ${data.detail || data.error}`);
+        } catch (err: any) {
+          setChatResponse(`Network Error: ${err.message}`);
+        } finally {
+          setIsChatLoading(false);
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [sessionId, fileName]);
+
+  useEffect(() => {
+    if (fileName && fileName !== 'paper.pdf') {
+      fetchKG();
+    }
+  }, [sessionId, fileName]);
+
+  const fetchKG = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/pdf/knowledge-graph', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, filename: fileName, pdf_url: pdfUrl }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setUrl(result.url);
+      } else {
+        setError(result.detail || "Failed to generate Knowledge Graph");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error connecting to server");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading || fileName === null) return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center bg-stone-50">
+      <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
+      <p className="text-sm font-semibold text-stone-700">Extracting Knowledge Graph Entities...</p>
+      <p className="text-xs text-stone-500">This requires analyzing chunks locally, and may take 1-2 minutes.</p>
+    </div>
+  );
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center bg-stone-50">
+      <p className="text-sm text-red-500 max-w-sm">{error}</p>
+      <Button onClick={fetchKG} variant="outline">Try Again</Button>
+    </div>
+  );
+
+  if (!url) return null;
+
+  return (
+    <div className="h-full w-full bg-stone-100 flex flex-col relative overflow-hidden">
+        <div className="w-full flex justify-between items-center p-3 bg-white border-b border-stone-200 shadow-sm z-10 shrink-0">
+            <div className="flex items-center gap-2">
+            <Share2 className="h-4 w-4 text-stone-600" />
+            <span className="text-sm font-medium text-stone-900">Interactive Knowledge Graph</span>
+            </div>
+            <a href={url} download="Knowledge_Graph.html" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs font-semibold hover:bg-stone-800 transition-colors">
+            <ExternalLink className="h-3.5 w-3.5" /> Open Full Screen
+            </a>
+        </div>
+        <iframe
+            src={url}
+            className="flex-1 w-full border-none bg-white"
+            title="Knowledge Graph viewer"
+        />
+
+        {chatNode && (
+          <div className="absolute top-16 right-4 w-1/3 min-w-[300px] bg-white border border-stone-200 rounded-xl shadow-2xl p-4 flex flex-col z-50 transition-all">
+             <div className="flex justify-between items-center mb-3 border-b border-stone-100 pb-2">
+                <h4 className="text-sm font-semibold text-stone-900 flex items-center gap-2">
+                   <MessageSquare className="w-4 h-4 text-stone-600" />
+                   {chatNode}
+                </h4>
+                <button onClick={() => setChatNode(null)} className="text-stone-400 hover:text-stone-700 bg-stone-100 hover:bg-stone-200 p-1 rounded-md transition-colors">
+                   <X className="w-4 h-4" />
+                </button>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto max-h-[400px] text-sm text-stone-700 custom-scrollbar pr-2 mb-1">
+                {isChatLoading ? (
+                   <div className="flex items-center gap-2 text-stone-500 animate-pulse text-xs py-4">
+                      <Sparkles className="w-4 h-4 text-stone-400" /> Synthesizing evidence from the graph...
+                   </div>
+                ) : (
+                   <div className="prose prose-sm prose-stone max-w-none text-[13px]">
+                     <ReactMarkdown>{chatResponse || ''}</ReactMarkdown>
+                   </div>
+                )}
+             </div>
+          </div>
+        )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main Panel
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -333,6 +537,7 @@ interface PaperInteractionPanelProps {
   sessionId?: string;
   fileName?: string | null;  // Explicitly allow null to indicate "not ready yet"
   pdfUrl?: string | null;    // URL for the PDF viewer
+  pdfSize?: string | null;   // Size of the PDF file
   onClose?: () => void;
   onSendMessage?: (message: string) => Promise<{ response: string; sources?: Citation[] }>;
   isImporting?: boolean;
@@ -345,6 +550,7 @@ export function PaperInteractionPanel({
   sessionId = "default",
   fileName: propFileName,
   pdfUrl,
+  pdfSize,
   onClose,
   onSendMessage,
   isImporting = false
@@ -396,7 +602,8 @@ export function PaperInteractionPanel({
             { id: 'diagram', Icon: ImageIcon, label: 'Figures' },
             { id: 'podcast', Icon: Headphones, label: 'Audio' },
             { id: 'video', Icon: Video, label: 'Videos' },
-            { id: 'report', Icon: FileText, label: 'Report' },
+            { id: 'graph', Icon: Share2, label: 'Knowledge Graph' },
+            { id: 'report', Icon: FileText, label: 'Summarize' },
           ].map(({ id, Icon, label }) => (
             <button key={id} onClick={() => setActiveTab(id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${activeTab === id ? 'bg-stone-900 text-white' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'}`}>
@@ -465,11 +672,22 @@ export function PaperInteractionPanel({
         {activeTab === 'view' && (
           <div className="h-full w-full bg-stone-100 flex flex-col relative overflow-hidden">
             {pdfUrl ? (
-              <iframe
-                src={pdfUrl}
-                className="w-full h-full border-none shadow-xl"
-                title="Document viewer"
-              />
+              <div className="flex flex-col h-full">
+                <div className="flex-none px-4 py-3 bg-white border-b border-stone-200 flex justify-between items-center shadow-sm z-10">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-stone-600" />
+                    <span className="text-sm font-medium text-stone-900">Document Viewer</span>
+                  </div>
+                  <a href={pdfUrl} download className="flex items-center gap-2 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs font-semibold hover:bg-stone-800 transition-colors">
+                    <Download className="h-3.5 w-3.5" /> Download PDF {pdfSize && `(${pdfSize})`}
+                  </a>
+                </div>
+                <iframe
+                  src={pdfUrl}
+                  className="flex-1 w-full border-none"
+                  title="Document viewer"
+                />
+              </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-stone-400 gap-4">
                 <FileText className="h-12 w-12 opacity-20" />
@@ -482,22 +700,8 @@ export function PaperInteractionPanel({
         {activeTab === 'diagram' && <DiagramTab sessionId={sessionId} fileName={fileName} />}
         {activeTab === 'podcast' && <PodcastTab paperTitle={title} paperContent={subtitle} />}
         {activeTab === 'video' && <VideoTab paperTitle={title} paperAbstract={subtitle} />}
-        {activeTab === 'report' && (
-          <div className="p-5 space-y-3">
-            {[
-              { Icon: FileText, label: 'Full Analysis Report', meta: 'PDF · 2.4 MB', action: 'Download' },
-              { Icon: Quote, label: 'Citation List', meta: 'BibTeX, APA, MLA', action: 'Copy' },
-            ].map(({ Icon, label, meta, action }) => (
-              <div key={label} className="flex items-center justify-between rounded-xl border border-stone-200 p-4 bg-white hover:border-stone-300 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-stone-100"><Icon className="h-4 w-4 text-stone-600" /></div>
-                  <div><p className="text-sm font-medium text-stone-900">{label}</p><p className="text-xs text-stone-400">{meta}</p></div>
-                </div>
-                <Button variant="outline" size="sm">{action}</Button>
-              </div>
-            ))}
-          </div>
-        )}
+        {activeTab === 'graph' && <KnowledgeGraphTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}
+        {activeTab === 'report' && <SummarizeTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}
       </div>
     </div>
   );

@@ -52,3 +52,14 @@ build/
 *.pkl
 knowledge_graph/**/*.bin
 temp_uploads/
+
+# Generated upload caches (PDFs, figures, graphs, vector stores)
+backend_python/data/uploads/
+backend_python/lib/
+backend_python/test.json*
+backend_python/*.json
+*.kg.html
+*.vstore.json
+*.summary.json
+*.report.pdf
+figures/

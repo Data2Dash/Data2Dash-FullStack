@@ -2,6 +2,11 @@ import os
 import shutil
 import asyncio
 import uuid
+import re
+import sys
+import json
+import subprocess
+import base64
 from typing import List, Optional, Dict
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -129,6 +134,8 @@ def get_vision_agent():
 # Pydantic Models
 class SearchRequest(BaseModel):
     query: str
+    page: int = 1
+    per_page: int = 10
 
 class AIChatRequest(BaseModel):
     query: str
@@ -215,8 +222,8 @@ def chat_ai(request: AIChatRequest):
 def search_papers(request: SearchRequest):
     agent = get_search_agent()
     try:
-        papers = agent.search_arxiv(request.query)
-        return {"papers": papers}
+        data = agent.search_academic_papers(request.query, request.page, request.per_page)
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -298,6 +305,148 @@ def get_figures(session_id: str, filename: str):
         
     return {"figures": figure_urls}
 
+class SummarizeRequest(BaseModel):
+    session_id: str
+    filename: str
+    pdf_url: Optional[str] = None
+
+class KGRequest(BaseModel):
+    session_id: str
+    filename: str
+    pdf_url: Optional[str] = None
+
+class KGChatRequest(BaseModel):
+    session_id: str
+    filename: str
+    query: str
+    pdf_url: Optional[str] = None
+
+import requests
+
+def ensure_pdf_exists(pdf_path: str, pdf_url: Optional[str]):
+    if not os.path.exists(pdf_path):
+        if pdf_url:
+            try:
+                os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+                # Some academic firewalls require user-agent
+                h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                r = requests.get(pdf_url, headers=h, timeout=15)
+                r.raise_for_status()
+                with open(pdf_path, 'wb') as f:
+                    f.write(r.content)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to auto-download PDF from {pdf_url}. Error: {e}")
+        else:
+            raise HTTPException(status_code=404, detail=f"PDF file not found at {pdf_path} and no auto-download URL was provided.")
+
+@app.post("/api/pdf/summarize")
+def extract_summary(request: SummarizeRequest):
+    try:
+        pdf_path = os.path.join("data", "uploads", request.session_id, request.filename)
+        ensure_pdf_exists(pdf_path, request.pdf_url)
+            
+        output_path = f"{pdf_path}.summary.json"
+        
+        if not os.path.exists(output_path):
+            cmd = [
+                sys.executable,
+                r"E:\Grad\Data2Dash-FullStack\summarizer\run_summarizer.py",
+                pdf_path,
+                output_path,
+                os.getenv("GROQ_API_KEY", ""),
+                "llama-3.1-8b-instant"
+            ]
+            
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"Summarizer failed: {proc.stderr}")
+                
+        with open(output_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        report_url = None
+        if data.get("report_pdf_base64"):
+            report_filename = f"{request.filename}.report.pdf"
+            report_path = os.path.join("data", "uploads", request.session_id, report_filename)
+            with open(report_path, "wb") as f:
+                f.write(base64.b64decode(data["report_pdf_base64"]))
+            report_url = f"http://localhost:8000/api/uploads/{request.session_id}/{report_filename}"
+            
+        return {
+            "title": data.get("title", "Summary"),
+            "summary": data.get("summary_markdown", "Could not generate summary."),
+            "report_url": report_url
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error in Summarizer: {str(e)}")
+
+@app.post("/api/pdf/knowledge-graph")
+def generate_kg(request: KGRequest):
+    try:
+        pdf_path = os.path.join("data", "uploads", request.session_id, request.filename)
+        ensure_pdf_exists(pdf_path, request.pdf_url)
+            
+        output_path = f"{pdf_path}.kg.html"
+        vstore_path = f"{pdf_path}.vstore.json"
+        
+        if not os.path.exists(output_path) or not os.path.exists(vstore_path):
+            cmd = [
+                sys.executable,
+                r"E:\Grad\Data2Dash-FullStack\Knowledge_Graph_0.1\run_kg.py",
+                pdf_path,
+                output_path
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"KG Extraction failed: {proc.stderr}")
+                
+        # Serve the HTML file from the static uploads mount
+        rel_path = output_path.replace("\\", "/").replace("data/uploads/", "").lstrip("/")
+        url = f"http://localhost:8000/api/uploads/{rel_path}"
+        
+        return {"url": url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error in KG: {str(e)}")
+
+@app.post("/api/pdf/knowledge-graph/chat")
+def generate_kg_chat(request: KGChatRequest):
+    try:
+        pdf_path = os.path.join("data", "uploads", request.session_id, request.filename)
+        vstore_path = f"{pdf_path}.vstore.json"
+        if not os.path.exists(vstore_path):
+            # If the vector store doesn't exist but we have a url, the user might need to click "extract graph" first.
+            # But let's at least make sure the pdf itself is downloaded
+            ensure_pdf_exists(pdf_path, request.pdf_url)
+            raise HTTPException(status_code=404, detail="KG Vectors not found. Please extract the graph first.")
+            
+        cmd = [
+            sys.executable,
+            r"E:\Grad\Data2Dash-FullStack\Knowledge_Graph_0.1\run_kg_query.py",
+            vstore_path,
+            request.query
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"KG Chat failed: {proc.stderr}")
+            
+        try:
+            # We expect the inner pipeline script to cleanly dump raw JSON
+            res = json.loads(proc.stdout)
+            if "error" in res:
+                raise HTTPException(status_code=500, detail=res["error"])
+            return {"answer": res.get("answer", "No answer generated.")}
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail=f"Invalid response from query engine: {proc.stdout}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error in KG Chat: {str(e)}")
+
 @app.post("/api/pdf/analyze-figure")
 async def analyze_figure(request: FigureAnalysisRequest):
     """Analyze a specific figure using vision models"""
@@ -340,10 +489,17 @@ async def import_paper(request: ImportPaperRequest):
         pdf_agent = get_pdf_agent()
         pdf_agent.process_pdf_with_name(file_path, request.session_id, filename)
         
+        # Get file size
+        file_size_bytes = os.path.getsize(file_path)
+        size_mb = round(file_size_bytes / (1024 * 1024), 1)
+        size_str = f"{size_mb} MB" if size_mb >= 0.1 else f"{round(file_size_bytes / 1024)} KB"
+        
         return {
             "message": "Paper imported and processed successfully",
             "filename": filename,
-            "figure_count": len(figure_paths)
+            "figure_count": len(figure_paths),
+            "pdf_url": f"http://localhost:8000/api/uploads/{request.session_id}/{filename}",
+            "pdf_size": size_str
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to import paper: {str(e)}")
