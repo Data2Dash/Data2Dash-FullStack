@@ -18,6 +18,7 @@ from agents.chat_agent import ChatAgent
 from agents.podcast_agent import PodcastAgent
 from agents.youtube_agent import YouTubeAgent
 from agents.vision_agent import VisionAgent
+from agents.citation_agent import CitationAgent
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -77,6 +78,7 @@ search_agent = None
 podcast_agent = None
 youtube_agent = None
 vision_agent = None
+citation_agent = None
 
 # Podcast task storage
 podcast_tasks: Dict[str, dict] = {}
@@ -130,6 +132,14 @@ def get_vision_agent():
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
         vision_agent = VisionAgent(groq_api_key=GROQ_API_KEY)
     return vision_agent
+
+def get_citation_agent():
+    global citation_agent
+    if citation_agent is None:
+        if not GROQ_API_KEY:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+        citation_agent = CitationAgent(groq_api_key=GROQ_API_KEY)
+    return citation_agent
 
 # Pydantic Models
 class SearchRequest(BaseModel):
@@ -193,6 +203,15 @@ class ImportPaperRequest(BaseModel):
     paper_id: str
     session_id: str
     title: str
+
+class CitationSearchRequest(BaseModel):
+    sentence: str
+
+class CitationFormatRequest(BaseModel):
+    title: str
+    authors: List[str]
+    year: str
+    url: str
 
 # Endpoints
 
@@ -624,6 +643,27 @@ def search_youtube_videos(request: YouTubeSearchRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Citation Endpoints
+
+@app.post("/api/citation/search")
+def search_citations(request: CitationSearchRequest):
+    agent = get_citation_agent()
+    try:
+        results = agent.search_semantic_scholar(request.sentence)
+        return {"papers": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/citation/format")
+def format_citation(request: CitationFormatRequest):
+    agent = get_citation_agent()
+    try:
+        results = agent.format_citation(request.title, request.authors, request.year, request.url)
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 if __name__ == "__main__":

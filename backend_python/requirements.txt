@@ -14,3 +14,11 @@ pypdf
 edge-tts
 pydub
 google-api-python-client
+static_ffmpeg
+PyMuPDF
+Pillow
+email-validator
+sqlalchemy
+httpx
+python-jose
+bcrypt
