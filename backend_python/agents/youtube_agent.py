@@ -18,7 +18,13 @@ class YouTubeAgent:
     def __init__(self, api_key: str):
         """Initialize YouTube Agent with API key"""
         self.api_key = api_key
-        self.youtube = build('youtube', 'v3', developerKey=api_key)
+        self._youtube = None  # Lazy init to avoid slow network call at startup
+
+    def _get_client(self):
+        """Get or create the YouTube API client (lazy initialization)"""
+        if self._youtube is None:
+            self._youtube = build('youtube', 'v3', developerKey=self.api_key)
+        return self._youtube
     
     def _build_search_query(self, paper_title: str, paper_abstract: str = "") -> str:
         """
@@ -78,7 +84,7 @@ class YouTubeAgent:
         for attempt in range(max_retries):
             try:
                 # Execute YouTube search
-                request = self.youtube.search().list(
+                request = self._get_client().search().list(
                     part="snippet",
                     q=query,
                     type="video",
@@ -119,7 +125,7 @@ class YouTubeAgent:
                         
                         # Recreate the YouTube client to reset connection
                         try:
-                            self.youtube = build('youtube', 'v3', developerKey=self.api_key)
+                            self._youtube = build('youtube', 'v3', developerKey=self.api_key)
                         except:
                             pass
                         continue
@@ -143,7 +149,7 @@ class YouTubeAgent:
             Dictionary with detailed video information
         """
         try:
-            request = self.youtube.videos().list(
+            request = self._get_client().videos().list(
                 part="snippet,statistics,contentDetails",
                 id=video_id
             )

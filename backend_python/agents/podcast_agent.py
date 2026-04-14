@@ -11,7 +11,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydub import AudioSegment
 import edge_tts
 import static_ffmpeg
-static_ffmpeg.add_paths()
 
 # --- Structured Data Models ---
 class PodcastLine(BaseModel):
@@ -24,6 +23,7 @@ class PodcastScript(BaseModel):
 class PodcastAgent:
     def __init__(self, groq_api_key: str):
         """Initialize the Podcast Agent with Groq API key"""
+        static_ffmpeg.add_paths()  # Lazy init: download ffmpeg only when agent is first used
         self.groq_api_key = groq_api_key
         self.llm = ChatGroq(
             groq_api_key=groq_api_key, 

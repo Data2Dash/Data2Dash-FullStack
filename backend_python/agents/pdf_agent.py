@@ -13,10 +13,18 @@ import shutil
 class PDFAgent:
     def __init__(self, groq_api_key):
         self.llm = ChatGroq(groq_api_key=groq_api_key, model_name="llama-3.3-70b-versatile", temperature=0)
-        self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        self._embeddings = None  # Lazy: model is downloaded only on first use
+        self._groq_api_key = groq_api_key
         self.vector_stores = {}
         self.chat_histories = {}
         self.uploaded_files = {}
+
+    @property
+    def embeddings(self):
+        """Lazy-load HuggingFace embeddings model only when first needed."""
+        if self._embeddings is None:
+            self._embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        return self._embeddings
 
     def process_pdf(self, pdf_path, session_id):
         """Process PDF and create vector store"""

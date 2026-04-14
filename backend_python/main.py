@@ -24,6 +24,16 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 import uvicorn
 
+# Project structure for external scripts
+CURRENT_FILE = os.path.abspath(__file__)
+BACKEND_DIR = os.path.dirname(CURRENT_FILE)
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+
+# Script paths
+RUN_SUMMARIZER_SCRIPT = os.path.join(PROJECT_ROOT, "summarizer", "run_summarizer.py")
+RUN_KG_SCRIPT = os.path.join(PROJECT_ROOT, "Knowledge_Graph_0.1", "run_kg.py")
+RUN_KG_QUERY_SCRIPT = os.path.join(PROJECT_ROOT, "Knowledge_Graph_0.1", "run_kg_query.py")
+
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 
@@ -374,7 +384,7 @@ def extract_summary(request: SummarizeRequest):
         if not os.path.exists(output_path):
             cmd = [
                 sys.executable,
-                r"E:\Grad\Data2Dash-FullStack\summarizer\run_summarizer.py",
+                RUN_SUMMARIZER_SCRIPT,
                 pdf_path,
                 output_path,
                 os.getenv("GROQ_API_KEY", ""),
@@ -418,7 +428,7 @@ def generate_kg(request: KGRequest):
         if not os.path.exists(output_path) or not os.path.exists(vstore_path):
             cmd = [
                 sys.executable,
-                r"E:\Grad\Data2Dash-FullStack\Knowledge_Graph_0.1\run_kg.py",
+                RUN_KG_SCRIPT,
                 pdf_path,
                 output_path
             ]
@@ -449,7 +459,7 @@ def generate_kg_chat(request: KGChatRequest):
             
         cmd = [
             sys.executable,
-            r"E:\Grad\Data2Dash-FullStack\Knowledge_Graph_0.1\run_kg_query.py",
+            RUN_KG_QUERY_SCRIPT,
             vstore_path,
             request.query
         ]
