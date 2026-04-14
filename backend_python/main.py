@@ -24,9 +24,13 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 import uvicorn
 
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+
 # Auth imports
 from database import engine, Base
 from routers.auth import router as auth_router
+from routers.documents import router as documents_router
 
 # Initialize FastAPI app
 # Create DB tables on startup
@@ -36,6 +40,7 @@ app = FastAPI(title="Youware AI Backend")
 
 # Register routers
 app.include_router(auth_router)
+app.include_router(documents_router)
 
 # Configure CORS
 # NOTE: allow_origins=["*"] + allow_credentials=True is forbidden by the CORS spec.
@@ -43,8 +48,9 @@ app.include_router(auth_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
+        FRONTEND_URL,
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
@@ -53,8 +59,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
-app.include_router(auth_router)
+# Register routers (second reference removed — already registered above)
 
 # Create directories
 os.makedirs("data/uploads", exist_ok=True)
@@ -267,7 +272,7 @@ async def upload_pdf(
         result = agent.process_pdf_with_name(file_path, session_id, file.filename)
         
         # Return accessible URL
-        file_url = f"http://localhost:8000/api/uploads/{session_id}/{file.filename}"
+        file_url = f"{BACKEND_URL}/api/uploads/{session_id}/{file.filename}"
         
         return {
             "message": result, 
@@ -318,7 +323,7 @@ def get_figures(session_id: str, filename: str):
         # path is like data/uploads/{session_id}/figures/{img_name}
         rel_path = path.replace("\\", "/").replace("data/uploads/", "")
         figure_urls.append({
-            "url": f"http://localhost:8000/api/uploads/{rel_path}",
+            "url": f"{BACKEND_URL}/api/uploads/{rel_path}",
             "local_path": path
         })
         
@@ -389,7 +394,7 @@ def extract_summary(request: SummarizeRequest):
             report_path = os.path.join("data", "uploads", request.session_id, report_filename)
             with open(report_path, "wb") as f:
                 f.write(base64.b64decode(data["report_pdf_base64"]))
-            report_url = f"http://localhost:8000/api/uploads/{request.session_id}/{report_filename}"
+            report_url = f"{BACKEND_URL}/api/uploads/{request.session_id}/{report_filename}"
             
         return {
             "title": data.get("title", "Summary"),
@@ -423,7 +428,7 @@ def generate_kg(request: KGRequest):
                 
         # Serve the HTML file from the static uploads mount
         rel_path = output_path.replace("\\", "/").replace("data/uploads/", "").lstrip("/")
-        url = f"http://localhost:8000/api/uploads/{rel_path}"
+        url = f"{BACKEND_URL}/api/uploads/{rel_path}"
         
         return {"url": url}
     except HTTPException:
@@ -517,7 +522,7 @@ async def import_paper(request: ImportPaperRequest):
             "message": "Paper imported and processed successfully",
             "filename": filename,
             "figure_count": len(figure_paths),
-            "pdf_url": f"http://localhost:8000/api/uploads/{request.session_id}/{filename}",
+            "pdf_url": f"{BACKEND_URL}/api/uploads/{request.session_id}/{filename}",
             "pdf_size": size_str
         }
     except Exception as e:

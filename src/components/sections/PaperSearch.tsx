@@ -5,6 +5,8 @@ import { clsx } from 'clsx';
 import { Badge } from '../ui/Badge';
 import { PaperInteractionPanel } from './PaperInteractionPanel';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 interface Paper {
   id: string;
   title: string;
@@ -39,7 +41,7 @@ export function PaperSearch() {
     setIsLoading(true);
     
     try {
-      const response = await fetch('http://localhost:8000/api/papers/search', {
+      const response = await fetch(`${API_URL}/api/papers/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, page, per_page: ITEMS_PER_PAGE }),
@@ -113,7 +115,7 @@ export function PaperSearch() {
 
     try {
       // Trigger backend import for figure extraction
-      const response = await fetch('http://localhost:8000/api/pdf/import', {
+      const response = await fetch(`${API_URL}/api/pdf/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -361,7 +363,7 @@ export function PaperSearch() {
               onClose={() => setSelectedPaper(null)}
               onSendMessage={async (message) => {
                 const contextQuery = `Context: Paper "${selectedPaper.title}" by ${selectedPaper.authors}. Abstract: ${selectedPaper.abstract}. Question: ${message}`;
-                const response = await fetch('http://localhost:8000/api/search', {
+                const response = await fetch(`${API_URL}/api/search`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ query: contextQuery }),

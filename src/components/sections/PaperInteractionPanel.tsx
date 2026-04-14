@@ -10,6 +10,8 @@ import { searchYouTubeVideos, type YouTubeVideo } from '../../api/youtubeService
 import { clsx } from 'clsx';
 import ReactMarkdown from 'react-markdown';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 interface Citation {
   content: string;
   metadata?: any;
@@ -202,7 +204,7 @@ function DiagramTab({ sessionId, fileName }: { sessionId: string; fileName: stri
     if (!fileName) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/pdf/figures?session_id=${sessionId}&filename=${fileName}`);
+      const response = await fetch(`${API_URL}/api/pdf/figures?session_id=${sessionId}&filename=${fileName}`);
       const data = await response.json();
       setFigures(data.figures || []);
     } catch (error) {
@@ -215,7 +217,7 @@ function DiagramTab({ sessionId, fileName }: { sessionId: string; fileName: stri
   const handleAnalyze = async (figure: Figure) => {
     setIsAnalyzing(true); setAnalysis(null); setFigureMessages([]);
     try {
-      const response = await fetch('http://localhost:8000/api/pdf/analyze-figure', {
+      const response = await fetch(`${API_URL}/api/pdf/analyze-figure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_path: figure.local_path, session_id: sessionId }),
@@ -236,7 +238,7 @@ function DiagramTab({ sessionId, fileName }: { sessionId: string; fileName: stri
     setFigureMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsAnalyzing(true);
     try {
-      const response = await fetch('http://localhost:8000/api/pdf/analyze-figure', {
+      const response = await fetch(`${API_URL}/api/pdf/analyze-figure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_path: selectedFigure.local_path, query: userMsg, session_id: sessionId }),
@@ -340,7 +342,7 @@ function SummarizeTab({ sessionId, fileName, pdfUrl }: { sessionId: string; file
   const fetchSummary = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/pdf/summarize', {
+      const response = await fetch(`${API_URL}/api/pdf/summarize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, filename: fileName, pdf_url: pdfUrl }),
@@ -412,7 +414,7 @@ function KnowledgeGraphTab({ sessionId, fileName, pdfUrl }: { sessionId: string;
         setChatResponse(null);
 
         try {
-          const res = await fetch('http://localhost:8000/api/pdf/knowledge-graph/chat', {
+          const res = await fetch(`${API_URL}/api/pdf/knowledge-graph/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -445,7 +447,7 @@ function KnowledgeGraphTab({ sessionId, fileName, pdfUrl }: { sessionId: string;
   const fetchKG = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/pdf/knowledge-graph', {
+      const response = await fetch(`${API_URL}/api/pdf/knowledge-graph`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, filename: fileName, pdf_url: pdfUrl }),

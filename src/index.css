@@ -65,6 +65,18 @@
   to   { opacity: 1; transform: translateX(0); }
 }
 
+/* Source panel slide in */
+@keyframes slideInPanel {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Shimmer for skeleton loaders */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
 /* Typing pulse */
 @keyframes pulse-dot {
   0%, 100% { opacity: 0.4; transform: scale(0.8); }
@@ -94,3 +106,25 @@
 
 .animate-float { animation: float 5s ease-in-out infinite; }
 .animate-float-delayed { animation: float 5s ease-in-out 2.5s infinite; }
+
+/* Source panel */
+.animate-slide-in-right {
+  animation: slideInPanel 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Skeleton shimmer */
+.shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+/* Inline citation tooltip */
+.inline-citation {
+  position: relative;
+  border-bottom: 1.5px dashed currentColor;
+  transition: color 0.15s;
+}
+.inline-citation:hover {
+  color: #2d5440; /* sage-700 */
+}

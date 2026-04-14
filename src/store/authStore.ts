@@ -32,3 +32,23 @@ export const useAuthStore = create<AuthState>()(
         }
     )
 );
+
+// ─── Before-logout hook registry ─────────────────────────────────────────────
+// Components can register a callback to run (e.g. save) before auth is cleared.
+const _beforeLogoutCallbacks = new Set<() => void>();
+
+export function registerBeforeLogout(cb: () => void) {
+    _beforeLogoutCallbacks.add(cb);
+}
+
+export function unregisterBeforeLogout(cb: () => void) {
+    _beforeLogoutCallbacks.delete(cb);
+}
+
+/** Call this instead of `logout()` so registered callbacks fire first. */
+export function logoutWithSave() {
+    _beforeLogoutCallbacks.forEach((cb) => {
+        try { cb(); } catch { /* best-effort */ }
+    });
+    useAuthStore.getState().logout();
+}

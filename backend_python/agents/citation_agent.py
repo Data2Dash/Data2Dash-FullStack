@@ -1,5 +1,6 @@
 import json
 import requests
+import re
 from typing import List, Dict, Any
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
@@ -13,10 +14,12 @@ class CitationAgent:
         )
 
     def search_semantic_scholar(self, sentence: str) -> List[Dict[str, Any]]:
+        print(f"[CitationAgent] Received search request for sentence: '{sentence}'")
         # Extract best search phrase using JSON mode to stay safe on versioning
         system_prompt = (
-            "You are an expert academic assistant. Extract a highly unique 4-to-5 word phrase "
-            "from the following sentence that would be ideal for searching a research database like Semantic Scholar. "
+            "You are an expert academic assistant. Extract the core technical keywords and "
+            "research concepts from the following sentence that would be ideal for searching a research database like Semantic Scholar. "
+            "Keep it concise (3-6 words). "
             "Respond strictly in JSON format with a single key 'query'."
         )
         
@@ -28,56 +31,106 @@ class CitationAgent:
             chain = prompt | self.llm
             result = chain.invoke({"sentence": sentence})
             
-            # Clean up response to handle possible markdown wrappers
+            # Use regex to find JSON block in case there's conversational filler
             response_text = result.content.strip()
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-                
-            parsed = json.loads(response_text)
-            query = parsed.get("query", sentence[:50])
+            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group(0))
+                llm_query = parsed.get("query", sentence[:50])
+            else:
+                llm_query = sentence[:50]
         except Exception as e:
-            print(f"Error parsing query: {e}")
-            query = sentence[:50]
+            print(f"[CitationAgent] Error parsing LLM query: {e}")
+            llm_query = sentence[:50]
             
-        # Hit Semantic Scholar
-        url = "https://api.semanticscholar.org/graph/v1/paper/search"
-        params = {
-            "query": query,
-            "limit": 5,
-            "fields": "title,authors,year,url,externalIds"
-        }
+        print(f"[CitationAgent] LLM formulated query: '{llm_query}'")
         
-        try:
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            papers = data.get("data", [])
-            
-            # Format nicely
-            formatted_papers = []
-            for p in papers:
-                authors = [a.get("name") for a in p.get("authors", [])]
-                doi = p.get("externalIds", {}).get("DOI", "")
+        def fetch_from_arxiv(search_query: str) -> List[Dict[str, Any]]:
+            try:
+                import arxiv
+                import datetime
+                client = arxiv.Client()
+                search = arxiv.Search(
+                    query=search_query,
+                    max_results=8,
+                    sort_by=arxiv.SortCriterion.Relevance
+                )
+                results = []
+                for result in client.results(search):
+                    year = result.published.year if result.published else datetime.datetime.now().year
+                    results.append({
+                        "id": result.entry_id.split('/')[-1] if result.entry_id else "",
+                        "title": result.title or "Unknown Title",
+                        "authors": [a.name for a in result.authors],
+                        "year": str(year),
+                        "url": result.pdf_url or result.entry_id,
+                        "doi": result.doi or ""
+                    })
+                return results
+            except Exception as e:
+                print(f"[CitationAgent] ArXiv error for query '{search_query}': {e}")
+                return []
+
+        # Helper to call Semantic Scholar
+        def fetch_papers(search_query: str) -> List[Dict[str, Any]]:
+            url = "https://api.semanticscholar.org/graph/v1/paper/search"
+            params = {
+                "query": search_query,
+                "limit": 8,
+                "fields": "title,authors,year,url,externalIds"
+            }
+            try:
+                response = requests.get(url, params=params, timeout=15)
+                response.raise_for_status()
+                data = response.json()
+                papers = data.get("data", [])
+                if not papers:
+                    return fetch_from_arxiv(search_query)
                 
-                # In case URL is empty but DOI exists
-                paper_url = p.get("url")
-                if not paper_url and doi:
-                    paper_url = f"https://doi.org/{doi}"
+                # Format nicely
+                formatted_papers = []
+                for p in papers:
+                    authors = [a.get("name") for a in p.get("authors", [])]
+                    doi = p.get("externalIds", {}).get("DOI", "")
                     
-                formatted_papers.append({
-                    "id": p.get("paperId", ""),
-                    "title": p.get("title", "Unknown Title"),
-                    "authors": authors,
-                    "year": str(p.get("year", "Unknown")),
-                    "url": paper_url,
-                    "doi": doi
-                })
-            return formatted_papers
-        except Exception as e:
-            print(f"Semantic Scholar error: {e}")
-            return []
+                    paper_url = p.get("url")
+                    if not paper_url and doi:
+                        paper_url = f"https://doi.org/{doi}"
+                        
+                    formatted_papers.append({
+                        "id": p.get("paperId", ""),
+                        "title": p.get("title", "Unknown Title"),
+                        "authors": authors,
+                        "year": str(p.get("year", "Unknown")),
+                        "url": paper_url,
+                        "doi": doi
+                    })
+                return formatted_papers
+            except Exception as e:
+                print(f"[CitationAgent] Semantic Scholar error for query '{search_query}': {e}")
+                print(f"[CitationAgent] Falling back to ArXiv for query '{search_query}'...")
+                return fetch_from_arxiv(search_query)
+                
+        # Phase 1: Search using LLM-extracted technical keywords
+        papers = fetch_papers(llm_query)
+        
+        # Phase 2: Fallback if first search yields no results
+        if not papers:
+            print(f"[CitationAgent] LLM query '{llm_query}' returned 0 results. Trying fallback...")
+            # Create a fallback query using words from the original sentence
+            clean_sentence = re.sub(r'[^\w\s]', '', sentence)
+            words = clean_sentence.split()
+            # Remove common stop words for fallback if possible, or just take first 8 useful words
+            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'of', 'this', 'that', 'it', 'is', 'are', 'was', 'were', 'be', 'been'}
+            important_words = [w for w in words if w.lower() not in stop_words]
+            fallback_query = " ".join(important_words[:6])
+            
+            if fallback_query and fallback_query.lower() != llm_query.lower():
+                print(f"[CitationAgent] Fallback query: '{fallback_query}'")
+                papers = fetch_papers(fallback_query)
+
+        print(f"[CitationAgent] Found {len(papers)} papers total")
+        return papers
 
     def format_citation(self, title: str, authors: List[str], year: str, url: str) -> Dict[str, str]:
         system_prompt = (

@@ -1,10 +1,10 @@
 import React from 'react';
-import { CitationHelper } from '../components/sections/CitationHelper';
+import { CitationWorkspace } from '../components/sections/CitationWorkspace';
 
 export function CitationPage() {
   return (
-    <div className="pt-16 min-h-screen bg-slate-50">
-      <CitationHelper />
+    <div className="min-h-screen">
+      <CitationWorkspace />
     </div>
   );
 }

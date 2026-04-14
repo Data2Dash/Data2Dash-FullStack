@@ -3,6 +3,8 @@ import { Upload, FileText, CheckCircle2, X, Loader2, Plus, Files as FilesIcon, C
 import { PaperInteractionPanel } from './PaperInteractionPanel';
 import { Button } from '../ui/Button';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 interface UploadedFile {
   name: string;
   size: string;
@@ -35,7 +37,7 @@ export function PdfAnalysis() {
       formData.append('file', file);
       formData.append('session_id', sessionId);
       try {
-        const response = await fetch('http://localhost:8000/api/pdf/upload', { method: 'POST', body: formData });
+        const response = await fetch(`${API_URL}/api/pdf/upload`, { method: 'POST', body: formData });
         const data = await response.json();
         setFiles((prev) => {
           const updated = prev.map((f) =>
@@ -164,7 +166,7 @@ export function PdfAnalysis() {
                   </>
                 }
                 onSendMessage={async (message) => {
-                  const response = await fetch('http://localhost:8000/api/pdf/chat', {
+                  const response = await fetch(`${API_URL}/api/pdf/chat`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

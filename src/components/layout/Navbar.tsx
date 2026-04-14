@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Menu, X, Sparkles, LogOut, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
+import { useAuthStore, logoutWithSave } from '../../store/authStore';
 
 export function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -34,7 +34,7 @@ export function Navbar() {
   }, []);
 
   const handleLogout = () => {
-    logout();
+    logoutWithSave();   // saves open doc before clearing auth
     navigate('/login');
   };
 

@@ -1,4 +1,5 @@
-const BASE = 'http://localhost:8000/auth';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE = `${API_URL}/auth`;
 
 export interface AuthUser {
     id: number;
@@ -50,5 +51,5 @@ export async function apiGetMe(token: string): Promise<AuthUser> {
 }
 
 export function googleAuthUrl(): string {
-    return 'http://localhost:8000/auth/google';
+    return `${API_URL}/auth/google`;
 }

@@ -16,30 +16,43 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen bg-stone-50 font-sans text-stone-900 selection:bg-sage-100 selection:text-sage-900 flex flex-col">
-        <Navbar />
-        <main className="flex-grow">
-          <Routes>
-            {/* Public auth routes – no Navbar wrapper, no footer */}
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Routes>
+          {/* Public auth routes – no Navbar wrapper, no footer */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-            {/* Protected routes */}
-            <Route path="/" element={
-              <ProtectedRoute><ChatPage /></ProtectedRoute>
-            } />
-            <Route path="/search" element={
-              <ProtectedRoute><SearchPage /></ProtectedRoute>
-            } />
-            <Route path="/upload" element={
-              <ProtectedRoute><UploadPage /></ProtectedRoute>
-            } />
-            <Route path="/citation" element={
-              <ProtectedRoute><CitationPage /></ProtectedRoute>
-            } />
-          </Routes>
-        </main>
-        <Footer />
+          {/* Workspace — has Navbar but no footer */}
+          <Route path="/citation" element={
+            <ProtectedRoute>
+              <>
+                <Navbar />
+                <CitationPage />
+              </>
+            </ProtectedRoute>
+          } />
+
+          {/* Standard routes with Navbar and Footer */}
+          <Route path="*" element={
+            <>
+              <Navbar />
+              <main className="flex-grow">
+                <Routes>
+                  <Route path="/" element={
+                    <ProtectedRoute><ChatPage /></ProtectedRoute>
+                  } />
+                  <Route path="/search" element={
+                    <ProtectedRoute><SearchPage /></ProtectedRoute>
+                  } />
+                  <Route path="/upload" element={
+                    <ProtectedRoute><UploadPage /></ProtectedRoute>
+                  } />
+                </Routes>
+              </main>
+              <Footer />
+            </>
+          } />
+        </Routes>
       </div>
     </Router>
   );

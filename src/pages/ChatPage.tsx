@@ -12,6 +12,8 @@ interface Message {
   sources?: string[];
 }
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export function ChatPage() {
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -48,7 +50,7 @@ export function ChatPage() {
       formData.append('file', file);
       formData.append('session_id', sessionId);
       
-      const response = await fetch('http://localhost:8000/api/pdf/upload', {
+      const response = await fetch(`${API_URL}/api/pdf/upload`, {
         method: 'POST',
         body: formData
       });
@@ -88,7 +90,7 @@ export function ChatPage() {
         content: msg.content
       }));
 
-      const response = await fetch('http://localhost:8000/api/chat/ai', {
+      const response = await fetch(`${API_URL}/api/chat/ai`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
