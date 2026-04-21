@@ -9,6 +9,13 @@ import { generatePodcast, pollPodcastStatus, getPodcastAudioUrl, type PodcastSta
 import { searchYouTubeVideos, type YouTubeVideo } from '../../api/youtubeService';
 import { clsx } from 'clsx';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+import { cleanTableMarkdown } from '../../utils/tableUtils';
+import { normalizeEquations } from '../../utils/mathUtils';
+import { codeComponents } from '../ui/CodeBlock';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -631,7 +638,22 @@ export function PaperInteractionPanel({
                   <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                     <div className={clsx("h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-[11px] font-semibold", msg.role === 'ai' ? 'bg-stone-900 text-white' : 'bg-stone-200 text-stone-700')}>{msg.role === 'ai' ? 'AI' : 'You'}</div>
                     <div className={clsx("rounded-2xl px-4 py-3 text-sm max-w-[80%] leading-relaxed", msg.role === 'ai' ? 'bg-stone-50 border border-stone-100 text-stone-800' : 'bg-stone-900 text-white')}>
-                      {msg.content}
+                      {msg.role === 'ai' && typeof msg.content === 'string' ? (
+                        <div className="prose prose-sm prose-stone max-w-none
+                          prose-table:w-full prose-table:text-xs prose-table:border-collapse
+                          prose-th:bg-stone-100 prose-th:px-2 prose-th:py-1 prose-th:text-left prose-th:font-semibold prose-th:border prose-th:border-stone-300
+                          prose-td:px-2 prose-td:py-1 prose-td:border prose-td:border-stone-200 even:prose-tr:bg-stone-50">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                            components={codeComponents}
+                          >
+                            {cleanTableMarkdown(normalizeEquations(msg.content))}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        msg.content
+                      )}
                       {msg.citations && msg.citations.length > 0 && (
                         <div className="mt-3 pt-2 border-t border-stone-200/50">
                           <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1.5">Sources</p>

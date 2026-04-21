@@ -1,89 +1,60 @@
 import os
-from langchain_groq import ChatGroq
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter  # ✅ Fixed import
-from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.messages import HumanMessage, AIMessage
+import sys
 import shutil
 
 class PDFAgent:
     def __init__(self, groq_api_key):
-        self.llm = ChatGroq(groq_api_key=groq_api_key, model_name="llama-3.3-70b-versatile", temperature=0)
-        self._embeddings = None  # Lazy: model is downloaded only on first use
         self._groq_api_key = groq_api_key
-        self.vector_stores = {}
-        self.chat_histories = {}
+        # We store one EnhancedRAGSystem per session
+        self.systems = {}
         self.uploaded_files = {}
 
-    @property
-    def embeddings(self):
-        """Lazy-load HuggingFace embeddings model only when first needed."""
-        if self._embeddings is None:
-            self._embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        return self._embeddings
+    def get_system(self, session_id):
+        # Lazy load to prevent taking down the backend due to torch/transformers startup delays
+        CURRENT_FILE = os.path.abspath(__file__)
+        BACKEND_DIR = os.path.dirname(os.path.dirname(CURRENT_FILE))
+        PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+        MULTIMODELRAG_DIR = os.path.join(PROJECT_ROOT, "multimodelrag")
+        if MULTIMODELRAG_DIR not in sys.path:
+            sys.path.append(MULTIMODELRAG_DIR)
+
+        from enhanced_rag_system import EnhancedRAGSystem, EnhancedRAGConfig
+
+        if session_id not in self.systems:
+            config = EnhancedRAGConfig(
+                embedding_model="sentence-transformers/all-MiniLM-L6-v2",
+                groq_model="llama-3.3-70b-versatile",
+                groq_vision_model="llama-3.2-11b-vision-preview",
+                chunk_size=1200,
+                chunk_overlap=150,
+                top_k=6,
+                use_multiquery=True,
+                use_self_rag_validation=True,
+                strict_grounding=True,
+                temp_dir=f"data/multimodel_temp/{session_id}",
+                exports_dir=f"data/multimodel_exports/{session_id}",
+                debug=False,
+            )
+            self.systems[session_id] = EnhancedRAGSystem(config=config, groq_api_key=self._groq_api_key)
+        return self.systems[session_id]
 
     def process_pdf(self, pdf_path, session_id):
-        """Process PDF and create vector store"""
-        try:
-            loader = PyPDFLoader(pdf_path)
-            docs = loader.load()
-            
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-            splits = text_splitter.split_documents(docs)
-            
-            persist_directory = f"data/pdf_vector_stores/{session_id}"
-            os.makedirs(persist_directory, exist_ok=True)
-            
-            vectorstore = Chroma.from_documents(
-                documents=splits,
-                embedding=self.embeddings,
-                persist_directory=persist_directory
-            )
-            
-            self.vector_stores[session_id] = vectorstore
-            
-            filename = os.path.basename(pdf_path)
-            if session_id not in self.uploaded_files:
-                self.uploaded_files[session_id] = []
-            self.uploaded_files[session_id].append(filename)
-            
-            return f"✅ PDF '{filename}' processed successfully! You can now ask questions about it."
-        
-        except Exception as e:
-            return f"❌ Error processing PDF: {e}"
+        """Process PDF (Compatibility mode)"""
+        return self.process_pdf_with_name(pdf_path, session_id, os.path.basename(pdf_path))
 
     def process_pdf_with_name(self, pdf_path, session_id, original_filename):
-        """Process PDF with original filename tracking"""
+        """Process PDF with original filename tracking using EnhancedRAGSystem"""
         try:
-            loader = PyPDFLoader(pdf_path)
-            docs = loader.load()
-            
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-            splits = text_splitter.split_documents(docs)
-            
-            persist_directory = f"data/pdf_vector_stores/{session_id}"
-            os.makedirs(persist_directory, exist_ok=True)
-            
-            if session_id in self.vector_stores:
-                self.vector_stores[session_id].add_documents(splits)
-            else:
-                vectorstore = Chroma.from_documents(
-                    documents=splits,
-                    embedding=self.embeddings,
-                    persist_directory=persist_directory
-                )
-                self.vector_stores[session_id] = vectorstore
+            system = self.get_system(session_id)
+            # Create a session specific sub-folder for any temporary elements
+            result = system.process_document(pdf_path)
             
             if session_id not in self.uploaded_files:
                 self.uploaded_files[session_id] = []
             if original_filename not in self.uploaded_files[session_id]:
                 self.uploaded_files[session_id].append(original_filename)
             
-            return f"✅ PDF '{original_filename}' processed successfully!"
+            return f"✅ PDF '{original_filename}' processed successfully! You can now ask advanced questions about it (including tables and formulas)."
         
         except Exception as e:
             return f"❌ Error processing PDF: {e}"
@@ -91,63 +62,77 @@ class PDFAgent:
     def get_uploaded_pdfs(self, session_id):
         """Return list of uploaded PDFs for the session"""
         return self.uploaded_files.get(session_id, [])
-
-    def format_docs(self, docs):
-        """Format documents for context"""
-        return "\n\n".join(doc.page_content for doc in docs)
-
+        
     def get_response(self, query, session_id):
-        """Get response based on PDF content"""
-        if session_id not in self.vector_stores:
-            return "⚠️ No PDF uploaded yet. Please upload a PDF first."
+        """Get response based on PDF content, including markdown for equations and tables.
+        
+        Returns a dict with:
+          - answer (str): main text answer
+          - equations (list): structured equation objects with latex/raw_text
+          - tables (list): structured table objects with markdown/raw_text
+          - sources (list): citation strings
+        """
+        if session_id not in self.systems:
+            return {
+                "answer": "⚠️ No PDF uploaded yet. Please upload a PDF first.",
+                "equations": [],
+                "tables": [],
+                "sources": [],
+            }
         
         try:
-            vectorstore = self.vector_stores[session_id]
-            retriever = vectorstore.as_retriever()
+            system = self.systems[session_id]
             
-            if session_id not in self.chat_histories:
-                self.chat_histories[session_id] = []
-            
-            template = """Answer the question based only on the following context:
-{context}
+            # Map query intent to mode
+            q_lower = query.lower()
+            mode = "standard"
+            if any(k in q_lower for k in ["explain", "why", "how"]):
+                mode = "explanation"
+            elif any(k in q_lower for k in ["analyze", "compare", "difference"]):
+                mode = "analysis"
 
-Question: {question}
-
-Answer: """
-            
-            prompt = ChatPromptTemplate.from_template(template)
-            
-            rag_chain = (
-                {"context": retriever | self.format_docs, "question": RunnablePassthrough()}
-                | prompt
-                | self.llm
-                | StrOutputParser()
+            # Query the specialized system
+            result = system._query_async(
+                user_query=query,
+                mode=mode,
+                include_sources=True,
+                image_mode=False,
             )
+
+            # Return structured dict — frontend handles rendering
+            return {
+                "answer": result.get("answer", ""),
+                "equations": result.get("equations", []),
+                "tables": result.get("tables", []),
+                "sources": result.get("sources", []),
+            }
             
-            response = rag_chain.invoke(query)
-            
-            self.chat_histories[session_id].append(HumanMessage(content=query))
-            self.chat_histories[session_id].append(AIMessage(content=response))
-            
-            return response
-        
         except Exception as e:
-            return f"❌ Error generating response: {e}"
+            return {
+                "answer": f"❌ Error generating response: {e}",
+                "equations": [],
+                "tables": [],
+                "sources": [],
+            }
 
     def clear_context(self, session_id):
-        """Clear the vector store and chat history for a session"""
-        if session_id in self.vector_stores:
-            del self.vector_stores[session_id]
-        
-        if session_id in self.chat_histories:
-            del self.chat_histories[session_id]
+        """Clear the context for a session"""
+        if session_id in self.systems:
+            del self.systems[session_id]
         
         if session_id in self.uploaded_files:
             del self.uploaded_files[session_id]
-        
-        persist_directory = f"data/pdf_vector_stores/{session_id}"
-        if os.path.exists(persist_directory):
+            
+        temp_dir = f"data/multimodel_temp/{session_id}"
+        if os.path.exists(temp_dir):
             try:
-                shutil.rmtree(persist_directory)
+                shutil.rmtree(temp_dir)
             except Exception as e:
-                print(f"Warning: Could not delete directory {persist_directory}: {e}")
+                pass
+        
+        export_dir = f"data/multimodel_exports/{session_id}"
+        if os.path.exists(export_dir):
+            try:
+                shutil.rmtree(export_dir)
+            except Exception as e:
+                pass

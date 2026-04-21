@@ -3,6 +3,13 @@ uvicorn
 python-multipart
 langchain
 langchain-groq
+langchain-experimental
+numpy
+requests
+pyvis
+networkx
+json-repair
+pdfplumber
 langchain-community
 langchain-huggingface
 chromadb

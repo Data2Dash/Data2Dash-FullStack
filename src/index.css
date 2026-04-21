@@ -128,3 +128,39 @@
 .inline-citation:hover {
   color: #2d5440; /* sage-700 */
 }
+
+/* ── Prose table overrides (used in chat bubbles & ChatPage) ────────────── */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  overflow-x: auto;
+  display: block;
+  white-space: nowrap;
+}
+.prose thead th {
+  background: #f5f4f2;          /* stone-100 */
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  font-weight: 600;
+  border: 1px solid #d6d3d1;   /* stone-300 */
+  white-space: nowrap;
+}
+.prose tbody td {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #e7e5e4;   /* stone-200 */
+  white-space: nowrap;
+}
+.prose tbody tr:nth-child(even) td {
+  background: #fafaf9;          /* stone-50 */
+}
+.prose tbody tr:hover td {
+  background: #f0fdf4;          /* light green tint on hover */
+}
+
+/* ── KaTeX display-mode centering ──────────────────────────────────────── */
+.prose .math-display {
+  overflow-x: auto;
+  padding: 0.5rem 0;
+  text-align: center;
+}

@@ -160,7 +160,7 @@ def get_citation_agent():
 class SearchRequest(BaseModel):
     query: str
     page: int = 1
-    per_page: int = 10
+    per_page: int = 25
 
 class AIChatRequest(BaseModel):
     query: str
@@ -254,9 +254,18 @@ def chat_ai(request: AIChatRequest):
 
 @app.post("/api/papers/search")
 def search_papers(request: SearchRequest):
+    """
+    Enhanced hybrid search endpoint.
+    Returns ranked papers from ArXiv + OpenAlex with LLM query expansion,
+    composite scoring, analytics, and source breakdowns.
+    """
     agent = get_search_agent()
     try:
-        data = agent.search_academic_papers(request.query, request.page, request.per_page)
+        data = agent.search_academic_papers(
+            query=request.query,
+            page=request.page,
+            per_page=request.per_page,
+        )
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -299,8 +308,9 @@ async def upload_pdf(
 @app.post("/api/pdf/chat")
 def chat_pdf(request: PDFChatRequest):
     agent = get_pdf_agent()
-    response = agent.get_response(request.query, request.session_id)
-    return {"response": response}
+    result = agent.get_response(request.query, request.session_id)
+    # result is now a structured dict {answer, equations, tables, sources}
+    return result
 
 @app.get("/api/pdf/list/{session_id}")
 def list_pdfs(session_id: str):

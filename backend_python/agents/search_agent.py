@@ -1,228 +1,182 @@
-from langchain_groq import ChatGroq
-from langchain_community.utilities import ArxivAPIWrapper, WikipediaAPIWrapper
-from langchain_community.tools import ArxivQueryRun, WikipediaQueryRun, DuckDuckGoSearchRun
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-import re
-import arxiv
-import itertools
+"""
+Enhanced Search Agent Adapter
+==============================
+Bridges the FastAPI backend to the Enhanced Hybrid Search Agent located at
+``Enhanced_search_agent/``. Adds the package to sys.path on first import so
+no files need to be duplicated.
+"""
+from __future__ import annotations
+
+import os
+import sys
+from dataclasses import asdict
+from typing import Any, Dict, List, Optional
+
+# ── Locate and register the Enhanced_search_agent package ────────────────────
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_BACKEND_DIR = os.path.dirname(_THIS_DIR)
+_PROJECT_ROOT = os.path.dirname(_BACKEND_DIR)
+_ENHANCED_DIR = os.path.join(_PROJECT_ROOT, "Enhanced_search_agent")
+
+if _ENHANCED_DIR not in sys.path:
+    sys.path.insert(0, _ENHANCED_DIR)
+
+# ── Import the Enhanced Agent components ────────────────────────────────────
+from app.services.search_agent import SearchAgent as _EnhancedSearchAgent  # noqa: E402
+from app.services.analytics_service import AnalyticsService                # noqa: E402
+
+
+def _paper_to_dict(paper) -> Dict[str, Any]:
+    """Convert an Enhanced Agent Paper dataclass to a JSON-serialisable dict."""
+    try:
+        d = asdict(paper)
+    except Exception:
+        # Fallback: manual attribute extraction
+        d = {
+            "id": getattr(paper, "id", ""),
+            "title": getattr(paper, "title", ""),
+            "abstract": getattr(paper, "abstract", ""),
+            "authors": getattr(paper, "authors", []),
+            "published_date": getattr(paper, "published_date", ""),
+            "source": getattr(paper, "source", ""),
+            "url": getattr(paper, "url", ""),
+            "doi": getattr(paper, "doi", None),
+            "arxiv_id": getattr(paper, "arxiv_id", None),
+            "openalex_work_id": getattr(paper, "openalex_work_id", None),
+            "citations": getattr(paper, "citations", 0),
+            "influential_score": getattr(paper, "influential_score", 0.0),
+            "keywords": getattr(paper, "keywords", []),
+            "institution_names": getattr(paper, "institution_names", []),
+            "topic_tags": getattr(paper, "topic_tags", []),
+            "venue": getattr(paper, "venue", None),
+            "semantic_score": getattr(paper, "semantic_score", 0.0),
+            "topic_relevance_score": getattr(paper, "topic_relevance_score", 0.0),
+            "inferred_topic_tags": getattr(paper, "inferred_topic_tags", []),
+            "retrieval_path": getattr(paper, "retrieval_path", None),
+            "ranking_reasons": getattr(paper, "ranking_reasons", {}),
+            "bm25_score": getattr(paper, "bm25_score", 0.0),
+            "embedding_score": getattr(paper, "embedding_score", 0.0),
+            "hybrid_relevance_score": getattr(paper, "hybrid_relevance_score", 0.0),
+        }
+    # Adapt field names expected by the legacy frontend
+    d["date"] = d.get("published_date", "")
+    d["authors_list"] = d.get("authors", [])
+    d["authors"] = ", ".join(d.get("authors_list", [])) if isinstance(d.get("authors_list"), list) else d.get("authors_list", "")
+    return d
+
+
+def _analytics_to_dict(analytics_obj) -> Dict[str, Any]:
+    """Convert an AnalyticsSummary dataclass to a JSON-serialisable dict."""
+    if analytics_obj is None:
+        return {}
+    try:
+        raw = asdict(analytics_obj)
+    except Exception:
+        raw = {}
+    # Ensure top_cited_papers entries include a full author list
+    top_cited = raw.get("top_cited_papers") or []
+    result_papers = []
+    for p in top_cited:
+        if isinstance(p, dict):
+            result_papers.append(p)
+    raw["top_cited_papers"] = result_papers
+    return raw
+
 
 class SearchAgent:
-    def __init__(self, groq_api_key):
-        # Use a faster model for the search agent to improve responsiveness
-        self.llm = ChatGroq(groq_api_key=groq_api_key, model_name="llama-3.1-8b-instant", temperature=0)
-        self.max_tools = 2  # Reduced for speed
-        # Initialize Tools
-        api_wrapper_wiki = WikipediaAPIWrapper(top_k_results=2, doc_content_chars_max=1500)
-        self.wiki = WikipediaQueryRun(api_wrapper=api_wrapper_wiki)
-        
-        api_wrapper_arxiv = ArxivAPIWrapper(top_k_results=2, doc_content_chars_max=1500)
-        self.arxiv = ArxivQueryRun(api_wrapper=api_wrapper_arxiv)
-        
-        self.search = DuckDuckGoSearchRun()
-        
-        self.tools = {
-            "Wikipedia": {
-                "tool": self.wiki,
-                "description": "Search Wikipedia for encyclopedic information about people, places, events, concepts, and general knowledge."
-            },
-            "Arxiv": {
-                "tool": self.arxiv,
-                "description": "Search scientific papers and academic research. Use for technical, scientific, or research-related questions."
-            },
-            "Search": {
-                "tool": self.search,
-                "description": "Search the internet for current events, news, recent information, and real-time data."
-            }
+    """
+    Public interface used by the FastAPI backend.
+    Wraps the Enhanced Hybrid Search Agent and exposes:
+      - search_academic_papers(query, page, per_page) -> rich dict
+      - run(query)                                    -> legacy chat-style dict
+    """
+
+    def __init__(self, groq_api_key: Optional[str] = None):
+        # groq_api_key is accepted for API compatibility but the Enhanced agent
+        # reads it from the environment / Settings object automatically.
+        if groq_api_key:
+            os.environ.setdefault("GROQ_API_KEY", groq_api_key)
+        self._agent = _EnhancedSearchAgent()
+
+    # ------------------------------------------------------------------
+    # Primary endpoint — rich enhanced search
+    # ------------------------------------------------------------------
+
+    def search_academic_papers(
+        self,
+        query: str,
+        page: int = 1,
+        per_page: int = 25,
+    ) -> Dict[str, Any]:
+        """
+        Calls the Enhanced Search Agent pipeline and returns a fully-serialisable
+        response dict suitable for JSON encoding by FastAPI.
+        """
+        raw = self._agent.search(query=query, page=page, per_page=per_page)
+
+        # Serialise Paper dataclasses → plain dicts
+        ranked_papers = [_paper_to_dict(p) for p in (raw.get("ranked_papers") or [])]
+        page_papers = [_paper_to_dict(p) for p in (raw.get("papers") or [])]
+
+        analytics = _analytics_to_dict(raw.get("analytics"))
+
+        return {
+            # Search metadata
+            "query": raw.get("query", query),
+            "expanded_queries": raw.get("expanded_queries", []),
+            "semantic_keywords": raw.get("semantic_keywords", []),
+            "topic_profile": raw.get("topic_profile", {}),
+
+            # Counts / accounting
+            "total_found": raw.get("total_found", 0),
+            "source_counts": raw.get("source_counts", {}),
+            "result_accounting": raw.get("result_accounting", {}),
+
+            # Paper lists (full ranked pool + current page)
+            "ranked_papers": ranked_papers,
+            "papers": page_papers,
+
+            # Pagination (backward compat fields)
+            "total": raw.get("total_found", 0),
+            "page": page,
+            "per_page": per_page,
+            "has_more": len(page_papers) == per_page,
+
+            # Analytics
+            "analytics": analytics,
         }
 
-    def search_academic_papers(self, query, page=1, per_page=10):
-        """Search academic papers using Arxiv, supporting pagination"""
+    # ------------------------------------------------------------------
+    # Legacy endpoint — used by /api/search (AI chat-style response)
+    # ------------------------------------------------------------------
+
+    def run(self, query: str, callbacks=None) -> Dict[str, Any]:
+        """
+        Backward-compatible wrapper for the /api/search endpoint.
+        Returns a chat-style response based on the top-ranked paper.
+        """
         try:
-            offset = (page - 1) * per_page
-            client = arxiv.Client()
-            search = arxiv.Search(
-                query=query,
-                max_results=offset + per_page,
-                sort_by=arxiv.SortCriterion.Relevance
-            )
-            
-            # Fetch results using generator and slice only proper page
-            results = []
-            generator = client.results(search)
-            for result in itertools.islice(generator, offset, offset + per_page):
-                results.append({
-                    "id": result.entry_id.split('/')[-1],
-                    "title": result.title,
-                    "authors": ", ".join([a.name for a in result.authors]),
-                    "date": result.published.strftime("%Y-%m-%d"),
-                    "source": "ArXiv",
-                    "abstract": result.summary.replace("\n", " "),
-                    "url": result.pdf_url or result.entry_id
-                })
-                
+            result = self.search_academic_papers(query, page=1, per_page=5)
+            papers = result.get("papers", [])
+            if papers:
+                top = papers[0]
+                summary = (
+                    f"**{top['title']}**\n"
+                    f"Authors: {top.get('authors', 'N/A')}\n"
+                    f"Published: {top.get('date', 'N/A')}\n"
+                    f"Citations: {top.get('citations', 0)}\n\n"
+                    f"{top.get('abstract', '')}"
+                )
+            else:
+                summary = f"No papers found for query: {query}"
             return {
-                "papers": results,
-                "total": 10000, # Fake large number since ArXiv API doesn't return total count easily
-                "page": page,
-                "per_page": per_page,
-                "has_more": len(results) == per_page
+                "response": summary,
+                "sources": [p.get("url", "") for p in papers],
+                "history": [],
             }
         except Exception as e:
-            print(f"Academic search error: {e}")
             return {
-                "papers": [],
-                "total": 0,
-                "page": page,
-                "per_page": per_page,
-                "has_more": False
-            }
-
-    def _get_system_prompt(self):
-        tools_desc = "\n".join([
-            f"- {name}: {info['description']}" 
-            for name, info in self.tools.items()
-        ])
-        
-        return f"""You are a research assistant. You MUST use tools to find information. DO NOT answer from your own knowledge.
-
-Available tools:
-{tools_desc}
-
-MANDATORY PROCESS:
-1. ALWAYS use at least ONE tool before answering
-2. For factual questions → use Wikipedia or Search
-3. For scientific/technical questions → use Arxiv or Wikipedia
-4. For current events/news → use Search
-
-Response format (YOU MUST FOLLOW THIS):
-
-Thought: [explain which tool you'll use and why]
-Action: [exactly one of: Wikipedia, Arxiv, Search]
-Action Input: [your search query]
-
-After receiving the Observation, you can either:
-- Use another tool (repeat Thought/Action/Action Input)
-- OR provide Final Answer
-
-To finish:
-Thought: [explain your conclusion based on tool results]
-Final Answer: [comprehensive answer using information from the tools]
-
-CRITICAL RULES:
-- NEVER answer without using tools first
-- ALWAYS cite which tool provided the information
-- Action must be EXACTLY: Wikipedia, Arxiv, or Search
-- Be thorough and detailed in your Final Answer
-
-Begin!"""
-
-    def run(self, query, callbacks=None):
-        """Run the search agent"""
-        try:
-            messages = [
-                SystemMessage(content=self._get_system_prompt()),
-                HumanMessage(content=f"User Question: {query}\n\nRemember: You MUST use at least one tool before answering!")
-            ]
-            
-            sources = []
-            history = []
-            max_iterations = 6
-            tools_used = 0
-            
-            for iteration in range(max_iterations):
-                # Get LLM response
-                response = self.llm.invoke(messages)
-                response_text = response.content
-                
-                # Parse response
-                thought_match = re.search(r"Thought:\s*(.+?)(?=Action:|Final Answer:|$)", response_text, re.DOTALL | re.IGNORECASE)
-                action_match = re.search(r"Action:\s*(\w+)", response_text, re.IGNORECASE)
-                action_input_match = re.search(r"Action Input:\s*(.+?)(?=\n\n|\n(?=[A-Z])|$)", response_text, re.DOTALL | re.IGNORECASE)
-                
-                # Extract thought
-                if thought_match:
-                    thought = thought_match.group(1).strip()
-                    history.append(("ai", f"🤔 Thought: {thought}"))
-                
-                # Check for Final Answer
-                if "Final Answer:" in response_text or "final answer:" in response_text.lower():
-                    # Only allow Final Answer if at least one tool was used
-                    if tools_used == 0:
-                        history.append(("human", "⚠️ You must use at least one tool before providing a Final Answer!"))
-                        messages.append(AIMessage(content=response_text))
-                        messages.append(HumanMessage(content="ERROR: You MUST use at least one tool (Wikipedia, Arxiv, or Search) before answering. Please use a tool now."))
-                        continue
-                    
-                    # Extract final answer
-                    final_answer_match = re.search(r"Final Answer:\s*(.+)", response_text, re.DOTALL | re.IGNORECASE)
-                    if final_answer_match:
-                        final_answer = final_answer_match.group(1).strip()
-                    else:
-                        final_answer = response_text.split("Final Answer:")[-1].strip()
-                    
-                    return {
-                        "response": final_answer,
-                        "sources": list(set(sources)),
-                        "history": history
-                    }
-                
-                # Execute tool action
-                if action_match and action_input_match:
-                    tool_name = action_match.group(1).strip()
-                    tool_input = action_input_match.group(1).strip()
-                    
-                    # Clean up tool input
-                    tool_input = tool_input.replace("[", "").replace("]", "").strip()
-                    
-                    history.append(("ai", f"🔧 Action: {tool_name}"))
-                    history.append(("ai", f"🔍 Input: {tool_input}"))
-                    
-                    # Execute tool
-                    if tool_name in self.tools:
-                        try:
-                            observation = self.tools[tool_name]["tool"].run(tool_input)
-                            tools_used += 1
-                            sources.append(f"{tool_name}: {tool_input}")
-                            
-                            # Truncate observation for display
-                            obs_preview = observation[:400] + "..." if len(observation) > 400 else observation
-                            history.append(("human", f"📋 Observation: {obs_preview}"))
-                            
-                            # Add to messages
-                            messages.append(AIMessage(content=response_text))
-                            messages.append(HumanMessage(content=f"Observation: {observation}\n\nYou can now either use another tool or provide a Final Answer based on this information."))
-                            
-                        except Exception as e:
-                            error_msg = f"Error using {tool_name}: {str(e)}"
-                            history.append(("human", f"❌ {error_msg}"))
-                            messages.append(AIMessage(content=response_text))
-                            messages.append(HumanMessage(content=f"{error_msg}\n\nPlease try a different tool or search query."))
-                    else:
-                        error_msg = f"Unknown tool: {tool_name}. Must be exactly one of: {', '.join(self.tools.keys())}"
-                        history.append(("human", f"❌ {error_msg}"))
-                        messages.append(AIMessage(content=response_text))
-                        messages.append(HumanMessage(content=error_msg))
-                else:
-                    # No valid action found
-                    if tools_used == 0:
-                        history.append(("human", "⚠️ Invalid format! You MUST use a tool first."))
-                        messages.append(AIMessage(content=response_text))
-                        messages.append(HumanMessage(content="You must provide an Action and Action Input. Use this format:\n\nThought: [your thinking]\nAction: [Wikipedia/Arxiv/Search]\nAction Input: [search query]"))
-                    else:
-                        # Tools were used, ask for final answer
-                        messages.append(AIMessage(content=response_text))
-                        messages.append(HumanMessage(content="Please provide your Final Answer based on the information you gathered from the tools."))
-            
-            # Max iterations reached
-            return {
-                "response": "I reached the maximum number of search steps. Here's what I found: " + (sources[0] if sources else "Please try asking your question differently."),
-                "sources": list(set(sources)),
-                "history": history
-            }
-            
-        except Exception as e:
-            return {
-                "response": f"An error occurred: {str(e)}",
+                "response": f"Search error: {str(e)}",
                 "sources": [],
-                "history": [("ai", f"❌ Error: {str(e)}")]
+                "history": [],
             }

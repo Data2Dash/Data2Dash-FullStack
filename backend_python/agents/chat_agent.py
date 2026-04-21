@@ -52,31 +52,60 @@ If the user asks a question completely unrelated to AI, Machine Learning, Data S
 Available tools:
 {tools_desc}
 
-MANDATORY PROCESS:
-1. ALWAYS use at least ONE tool before answering, unless it is a simple conversational greeting or you are rejecting an out-of-scope question.
-2. If the user mentions an uploaded document, use the DocumentReader tool!
-3. For specific AI papers or scientific concepts → use Arxiv or Wikipedia.
+PROCESS:
+1. If the system context already contains the paper title, abstract, or relevant information to answer the question, answer DIRECTLY using that context — do NOT call a tool unnecessarily.
+2. If the user mentions an uploaded document and a DocumentReader tool is available, use it.
+3. For questions requiring external facts, citations, or recent publications → use Arxiv, Wikipedia, or Search.
 4. For general AI news or recent model releases → use Search.
 
-Response format (YOU MUST FOLLOW THIS STRICTLY IN A LOOP):
+MATH & EQUATION FORMATTING (CRITICAL — ALWAYS FOLLOW):
+- ALL mathematical expressions MUST be formatted using LaTeX notation.
+- Display equations (standalone on their own line) → wrap in $$...$$
+  Example:  $$P(T=1 \\mid X) = \\dfrac{{1}}{{1 + e^{{-z}}}}$$
+- Inline math (within a sentence) → wrap in $...$
+  Example:  The loss function is $\\mathcal{{L}} = -\\sum_i y_i \\log(\\hat{{y}}_i)$
+- Use proper LaTeX commands:
+    Fractions   → \\frac{{a}}{{b}}  or  \\dfrac{{a}}{{b}}
+    Exponents   → x^{{2}}  or  e^{{-z}}
+    Subscripts  → x_{{i}}
+    Summation   → \\sum_{{i=1}}^{{n}}
+    Integral    → \\int_{{a}}^{{b}} f(x)\\,dx
+    Square root → \\sqrt{{x}}
+    Greek       → \\alpha, \\beta, \\sigma, \\mu, \\theta, etc.
+    Absolute    → \\left| x \\right|
+    Matrix      → \\begin{{bmatrix}} a & b \\\\ c & d \\end{{bmatrix}}
+- NEVER write equations as plain ASCII like "1/(1 + exp(-z))" — always use $$...$$
+
+CODE FORMATTING (CRITICAL):
+- NEVER use inline backticks (`like this`) for Python keywords, variable names, or partial code.
+- ALL code — even a single line — MUST be in a complete fenced block with a language tag:
+  ```python
+  b = set()
+  for e in range(10):
+      b.add(e)
+  ```
+- When a paper contains a complete code listing (e.g. Listing 3, Listing 4), reproduce it
+  IN FULL as a single fenced block — do not split it across multiple blocks.
+- Always pick the correct language tag: python, bash, sql, javascript, r, etc.
+- Use markdown formatting (bold, bullet points, headers) for all non-code prose.
+
+Response format when using a tool:
 
 Thought: [explain which tool you'll use and why]
 Action: [exactly one of the tool names available]
 Action Input: [your search query]
 
-After receiving the Observation, you can either:
-- Use another tool (repeat Thought/Action/Action Input)
-- OR provide Final Answer
+After receiving the Observation:
+- Use another tool OR provide Final Answer
 
 To finish:
-Thought: [explain your conclusion based on tool results]
-Final Answer: [comprehensive answer using information from the tools. YOU MUST CITE YOUR SOURCES IN-TEXT (e.g. "According to Smith et al. on Arxiv...")]
+Thought: [explain your conclusion]
+Final Answer: [comprehensive, well-formatted answer with LaTeX for all math]
 
 CRITICAL RULES:
-- Never guess facts about uploaded documents or scientific concepts without searching first.
-- ALWAYS cite which tool provided the information in your Final Answer to make it trustworthy.
+- If context is available in the system message, answer from it directly — skip tools.
+- Never guess facts about uploaded documents without using DocumentReader.
 - Action must be an EXACT match to an available tool name.
-- Use markdown formatting in your Final Answer to make it highly readable (bolding, bullet points, code blocks).
 
 Begin!"""
 
@@ -92,12 +121,25 @@ Begin!"""
             from agents.pdf_agent import PDFAgent
             import os
             
-            def run_document_reader(q: str):
-                 # Get global PDFAgent instance or create a temporary one if needed
-                 # For simplicity in this architectural pattern, we just instantiate one
+            def run_document_reader(q: str) -> str:
                  groq_api_key = os.getenv("GROQ_API_KEY")
                  temp_pdf_agent = PDFAgent(groq_api_key=groq_api_key)
-                 return temp_pdf_agent.get_response(q, session_id)
+                 result = temp_pdf_agent.get_response(q, session_id)
+                 # get_response now returns a structured dict — convert to readable string
+                 if isinstance(result, dict):
+                     parts = []
+                     if result.get("answer"):
+                         parts.append(result["answer"])
+                     for eq in result.get("equations", []):
+                         label = eq.get("label") or f"Equation {eq.get('global_number', '?')}"
+                         latex = eq.get("normalized_latex") or eq.get("latex") or eq.get("raw_text") or ""
+                         parts.append(f"[{label}]: {latex}")
+                     for tb in result.get("tables", []):
+                         label = tb.get("label") or f"Table {tb.get('global_number', '?')}"
+                         content = tb.get("markdown") or tb.get("raw_text") or ""
+                         parts.append(f"[{label}]: {content}")
+                     return "\n".join(parts) if parts else "No content found."
+                 return str(result)
             
             # Create a dummy class that looks like a langchain tool to our loop
             class DocumentReaderTool:
@@ -109,14 +151,23 @@ Begin!"""
             }
 
         try:
-            messages = [SystemMessage(content=self._get_system_prompt(current_tools))]
+            # Extract any system-role entries from history and prepend to system prompt
+            extra_system = " ".join(
+                msg.get("content", "")
+                for msg in (history or [])
+                if msg.get("role") == "system"
+            )
+            base_system = self._get_system_prompt(current_tools)
+            full_system = (extra_system + "\n\n" + base_system) if extra_system else base_system
+            messages = [SystemMessage(content=full_system)]
             
             # Format history (converting dicts from frontend if needed)
-            for msg in history:
+            for msg in (history or []):
                 if msg.get("role") == "user":
                     messages.append(HumanMessage(content=msg.get("content", "")))
                 elif msg.get("role") == "ai":
                     messages.append(AIMessage(content=msg.get("content", "")))
+                # 'system' entries already merged above — skip them here
 
             messages.append(HumanMessage(content=f"User Message: {query}\n\nRemember: Use tools if it's a factual/research question, or politely decline if it's completely out of scope of AI/Data Science!"))
             
