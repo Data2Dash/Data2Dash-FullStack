@@ -19,6 +19,7 @@ from agents.podcast_agent import PodcastAgent
 from agents.youtube_agent import YouTubeAgent
 from agents.vision_agent import VisionAgent
 from agents.citation_agent import CitationAgent
+from agents.quiz_agent import QuizAgent
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -94,6 +95,7 @@ podcast_agent = None
 youtube_agent = None
 vision_agent = None
 citation_agent = None
+quiz_agent = None
 
 # Podcast task storage
 podcast_tasks: Dict[str, dict] = {}
@@ -155,6 +157,14 @@ def get_citation_agent():
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
         citation_agent = CitationAgent(groq_api_key=GROQ_API_KEY)
     return citation_agent
+
+def get_quiz_agent():
+    global quiz_agent
+    if quiz_agent is None:
+        if not GROQ_API_KEY:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+        quiz_agent = QuizAgent(groq_api_key=GROQ_API_KEY)
+    return quiz_agent
 
 # Pydantic Models
 class SearchRequest(BaseModel):
@@ -227,6 +237,12 @@ class CitationFormatRequest(BaseModel):
     authors: List[str]
     year: str
     url: str
+
+class QuizRequest(BaseModel):
+    session_id: str
+    filename: str
+    num_questions: int = 5
+    difficulty: str = "Medium"  # Easy, Medium, Hard
 
 # Endpoints
 
@@ -688,6 +704,41 @@ def format_citation(request: CitationFormatRequest):
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Quiz Endpoints
+
+@app.post("/api/pdf/quiz")
+def generate_quiz(request: QuizRequest):
+    """
+    Generate a multiple-choice quiz from an already-uploaded PDF.
+    The PDF must have been uploaded via /api/pdf/upload first.
+    """
+    pdf_path = os.path.join("data", "uploads", request.session_id, request.filename)
+    if not os.path.exists(pdf_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"PDF not found for session '{request.session_id}'. Please upload it first."
+        )
+
+    # Clamp num_questions to allowed values
+    valid_counts = {5, 10, 20}
+    num_questions = request.num_questions if request.num_questions in valid_counts else 5
+
+    valid_difficulties = {"Easy", "Medium", "Hard"}
+    difficulty = request.difficulty if request.difficulty in valid_difficulties else "Medium"
+
+    agent = get_quiz_agent()
+    try:
+        questions = agent.generate_quiz(
+            pdf_path=pdf_path,
+            num_questions=num_questions,
+            difficulty=difficulty,
+        )
+        return {"questions": questions}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
 
 
 

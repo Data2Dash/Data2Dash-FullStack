@@ -13,6 +13,7 @@ pdfplumber
 langchain-community
 langchain-huggingface
 chromadb
+langchain-chroma
 sentence-transformers
 arxiv
 wikipedia

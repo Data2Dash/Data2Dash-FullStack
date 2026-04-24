@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   MessageSquare, Image as ImageIcon, Share2, Headphones, FileText, Quote,
-  X, Send, Download, Loader2, Video, ExternalLink, ChevronLeft, Sparkles, Eye
+  X, Send, Download, Loader2, Video, ExternalLink, ChevronLeft, Sparkles, Eye,
+  BrainCircuit, CheckCircle2, XCircle, RotateCcw, ChevronRight, Trophy, RefreshCw
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -536,6 +537,387 @@ function KnowledgeGraphTab({ sessionId, fileName, pdfUrl }: { sessionId: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Quiz Tab
+// ────────────────────────────────────────────────────────────────────────────
+
+interface QuizQuestion {
+  question: string;
+  options: string[];
+  answer: string;
+}
+
+type QuizPhase = 'config' | 'loading' | 'playing' | 'results';
+
+function QuizTab({ sessionId, fileName }: { sessionId: string; fileName: string | null }) {
+  const [phase, setPhase] = useState<QuizPhase>('config');
+  const [numQuestions, setNumQuestions] = useState<5 | 10 | 20>(5);
+  const [difficulty, setDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [userAnswers, setUserAnswers] = useState<(string | null)[]>([]);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [answered, setAnswered] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const score = userAnswers.filter((ans, i) => {
+    if (!ans || !questions[i]) return false;
+    return ans.trim().toLowerCase() === questions[i].answer.trim().toLowerCase();
+  }).length;
+
+  const handleGenerate = async () => {
+    if (!fileName) return;
+    setPhase('loading');
+    setError(null);
+    setQuestions([]);
+    setUserAnswers([]);
+    setCurrentIdx(0);
+    setSelectedOption(null);
+    setAnswered(false);
+    try {
+      const res = await fetch(`${API_URL}/api/pdf/quiz`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, filename: fileName, num_questions: numQuestions, difficulty }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to generate quiz');
+      if (!data.questions?.length) throw new Error('No questions returned. Try again.');
+      setQuestions(data.questions);
+      setUserAnswers(new Array(data.questions.length).fill(null));
+      setPhase('playing');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setPhase('config');
+    }
+  };
+
+  const handleSelectOption = (option: string) => {
+    if (answered) return;
+    setSelectedOption(option);
+    setAnswered(true);
+    setUserAnswers(prev => {
+      const next = [...prev];
+      next[currentIdx] = option;
+      return next;
+    });
+  };
+
+  const handleNext = () => {
+    if (currentIdx < questions.length - 1) {
+      setCurrentIdx(i => i + 1);
+      setSelectedOption(null);
+      setAnswered(false);
+    } else {
+      setPhase('results');
+    }
+  };
+
+  const handleRetake = () => {
+    setCurrentIdx(0);
+    setSelectedOption(null);
+    setAnswered(false);
+    setUserAnswers(new Array(questions.length).fill(null));
+    setPhase('playing');
+  };
+
+  const handleNewQuiz = () => {
+    setPhase('config');
+    setQuestions([]);
+  };
+
+  // ── Config Screen ──
+  if (phase === 'config') {
+    return (
+      <div className="flex flex-col h-full items-center justify-center p-8 gap-8">
+        <div className="text-center">
+          <div className="inline-flex p-4 rounded-2xl bg-stone-100 mb-4">
+            <BrainCircuit className="h-8 w-8 text-stone-700" />
+          </div>
+          <h4 className="text-xl font-bold text-stone-900 mb-1">Quiz Generator</h4>
+          <p className="text-sm text-stone-500 max-w-xs">
+            {fileName ? `Test your knowledge of "${fileName}"` : 'Upload a PDF first to generate a quiz.'}
+          </p>
+        </div>
+
+        {fileName && (
+          <div className="w-full max-w-sm space-y-6">
+            {/* Number of Questions */}
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Questions</p>
+              <div className="flex gap-2">
+                {([5, 10, 20] as const).map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setNumQuestions(n)}
+                    className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+                      numQuestions === n
+                        ? 'bg-stone-900 text-white border-stone-900 shadow-md'
+                        : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Difficulty */}
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Difficulty</p>
+              <div className="flex gap-2">
+                {(['Easy', 'Medium', 'Hard'] as const).map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setDifficulty(d)}
+                    className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+                      difficulty === d
+                        ? d === 'Easy' ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                          : d === 'Medium' ? 'bg-amber-500 text-white border-amber-500 shadow-md'
+                          : 'bg-red-600 text-white border-red-600 shadow-md'
+                        : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={handleGenerate}
+              className="w-full py-3 rounded-xl bg-stone-900 text-white font-semibold text-sm hover:bg-stone-700 transition-all shadow-md active:scale-95"
+            >
+              Generate Quiz
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Loading Screen ──
+  if (phase === 'loading') {
+    return (
+      <div className="flex flex-col h-full items-center justify-center gap-5 p-8 text-center">
+        <div className="relative">
+          <div className="h-16 w-16 rounded-full border-4 border-stone-100 border-t-stone-900 animate-spin" />
+          <BrainCircuit className="h-6 w-6 text-stone-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+        </div>
+        <div>
+          <p className="font-semibold text-stone-800 mb-1">Generating your quiz…</p>
+          <p className="text-sm text-stone-500">Analyzing the document and crafting {numQuestions} {difficulty.toLowerCase()} questions.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Playing Screen ──
+  if (phase === 'playing' && questions.length > 0) {
+    const q = questions[currentIdx];
+    const progress = ((currentIdx) / questions.length) * 100;
+    const isCorrect = selectedOption?.trim().toLowerCase() === q.answer.trim().toLowerCase();
+
+    const optionLabels = ['A', 'B', 'C', 'D'];
+
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* Progress Header */}
+        <div className="flex-none px-5 pt-4 pb-3 bg-white border-b border-stone-100">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
+              Question {currentIdx + 1} <span className="text-stone-300">/ {questions.length}</span>
+            </span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+              difficulty === 'Easy' ? 'bg-emerald-50 text-emerald-700'
+                : difficulty === 'Medium' ? 'bg-amber-50 text-amber-700'
+                : 'bg-red-50 text-red-700'
+            }`}>{difficulty}</span>
+          </div>
+          <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-stone-900 rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Question + Options */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-6 space-y-4">
+          <div className="animate-fade-up">
+            <p className="text-[15px] font-semibold text-stone-900 leading-relaxed mb-5">
+              {q.question}
+            </p>
+
+            <div className="space-y-2.5">
+              {q.options.map((opt, i) => {
+                const isSelected = selectedOption === opt;
+                const thisIsCorrect = opt.trim().toLowerCase() === q.answer.trim().toLowerCase();
+                let btnClass = 'border-stone-200 bg-white text-stone-700 hover:border-stone-400 hover:bg-stone-50';
+
+                if (answered) {
+                  if (thisIsCorrect) {
+                    btnClass = 'border-emerald-400 bg-emerald-50 text-emerald-800';
+                  } else if (isSelected && !thisIsCorrect) {
+                    btnClass = 'border-red-300 bg-red-50 text-red-700';
+                  } else {
+                    btnClass = 'border-stone-100 bg-stone-50 text-stone-400 opacity-70';
+                  }
+                }
+
+                return (
+                  <button
+                    key={i}
+                    onClick={() => handleSelectOption(opt)}
+                    disabled={answered}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm text-left transition-all duration-200 ${btnClass} disabled:cursor-default`}
+                  >
+                    <span className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-all ${
+                      answered && thisIsCorrect ? 'bg-emerald-500 text-white'
+                        : answered && isSelected && !thisIsCorrect ? 'bg-red-500 text-white'
+                        : 'bg-stone-100 text-stone-500'
+                    }`}>
+                      {answered && thisIsCorrect ? <CheckCircle2 className="h-3.5 w-3.5" />
+                        : answered && isSelected && !thisIsCorrect ? <XCircle className="h-3.5 w-3.5" />
+                        : optionLabels[i]}
+                    </span>
+                    <span className="flex-1 leading-snug">{opt}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Feedback + Next */}
+            {answered && (
+              <div className="mt-5 animate-fade-up">
+                <div className={`p-3 rounded-xl mb-4 text-sm font-medium flex items-center gap-2 ${
+                  isCorrect ? 'bg-emerald-50 text-emerald-800 border border-emerald-100'
+                    : 'bg-red-50 text-red-700 border border-red-100'
+                }`}>
+                  {isCorrect
+                    ? <><CheckCircle2 className="h-4 w-4 shrink-0" /> Correct! Well done.</>  
+                    : <><XCircle className="h-4 w-4 shrink-0" /> The correct answer is: <span className="font-bold">{q.answer}</span></>}
+                </div>
+                <button
+                  onClick={handleNext}
+                  className="w-full py-2.5 rounded-xl bg-stone-900 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:bg-stone-700 transition-all active:scale-95"
+                >
+                  {currentIdx < questions.length - 1 ? (
+                    <><span>Next Question</span><ChevronRight className="h-4 w-4" /></>
+                  ) : (
+                    <><Trophy className="h-4 w-4" /><span>See Results</span></>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Results Screen ──
+  if (phase === 'results') {
+    const pct = Math.round((score / questions.length) * 100);
+    const circumference = 2 * Math.PI * 38;
+    const strokeDashoffset = circumference - (pct / 100) * circumference;
+    const grade = pct >= 80 ? { label: 'Excellent!', color: 'text-emerald-600' }
+      : pct >= 60 ? { label: 'Good Job!', color: 'text-amber-600' }
+      : { label: 'Keep Studying', color: 'text-red-500' };
+
+    return (
+      <div className="flex flex-col h-full overflow-y-auto custom-scrollbar">
+        {/* Score Summary */}
+        <div className="flex-none flex flex-col items-center py-8 px-6 bg-stone-50 border-b border-stone-100">
+          <svg width="96" height="96" viewBox="0 0 96 96" className="mb-3">
+            <circle cx="48" cy="48" r="38" fill="none" stroke="#e7e5e4" strokeWidth="8" />
+            <circle
+              cx="48" cy="48" r="38" fill="none"
+              stroke={pct >= 80 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#ef4444'}
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              transform="rotate(-90 48 48)"
+              style={{ transition: 'stroke-dashoffset 1s ease' }}
+            />
+            <text x="48" y="53" textAnchor="middle" fontSize="18" fontWeight="700" fill="#1c1917">
+              {pct}%
+            </text>
+          </svg>
+          <h3 className={`text-xl font-bold mb-0.5 ${grade.color}`}>{grade.label}</h3>
+          <p className="text-sm text-stone-500">
+            You scored <span className="font-bold text-stone-800">{score}</span> out of <span className="font-bold text-stone-800">{questions.length}</span>
+          </p>
+          <div className="flex gap-2 mt-5">
+            <button
+              onClick={handleRetake}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-stone-200 text-stone-700 text-xs font-semibold hover:bg-stone-100 transition-all"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Retake
+            </button>
+            <button
+              onClick={handleNewQuiz}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-700 transition-all"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> New Quiz
+            </button>
+          </div>
+        </div>
+
+        {/* Per-question review */}
+        <div className="divide-y divide-stone-100">
+          {questions.map((q, i) => {
+            const ua = userAnswers[i];
+            const correct = ua?.trim().toLowerCase() === q.answer.trim().toLowerCase();
+            return (
+              <div key={i} className="px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <div className={`shrink-0 mt-0.5 h-5 w-5 rounded-full flex items-center justify-center ${
+                    correct ? 'bg-emerald-100' : 'bg-red-100'
+                  }`}>
+                    {correct
+                      ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      : <XCircle className="h-3.5 w-3.5 text-red-500" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-stone-800 leading-snug mb-1.5">
+                      <span className="text-stone-400 mr-1">Q{i + 1}.</span>{q.question}
+                    </p>
+                    {!correct && (
+                      <div className="space-y-1">
+                        {ua && (
+                          <p className="text-xs text-red-500">
+                            <span className="font-semibold">Your answer:</span> {ua}
+                          </p>
+                        )}
+                        <p className="text-xs text-emerald-700">
+                          <span className="font-semibold">Correct answer:</span> {q.answer}
+                        </p>
+                      </div>
+                    )}
+                    {correct && (
+                      <p className="text-xs text-emerald-600 font-medium">{ua}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main Panel
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -607,6 +989,7 @@ export function PaperInteractionPanel({
         <div className="flex gap-1 overflow-x-auto pb-3 no-scrollbar">
           {[
             { id: 'chat', Icon: MessageSquare, label: 'Chat' },
+            { id: 'quiz', Icon: BrainCircuit, label: 'Quiz' },
             { id: 'view', Icon: Eye, label: 'View' },
             { id: 'diagram', Icon: ImageIcon, label: 'Figures' },
             { id: 'podcast', Icon: Headphones, label: 'Audio' },
@@ -615,7 +998,11 @@ export function PaperInteractionPanel({
             { id: 'report', Icon: FileText, label: 'Summarize' },
           ].map(({ id, Icon, label }) => (
             <button key={id} onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${activeTab === id ? 'bg-stone-900 text-white' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'}`}>
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+                activeTab === id
+                  ? id === 'quiz' ? 'bg-stone-900 text-white ring-2 ring-stone-900 ring-offset-1' : 'bg-stone-900 text-white'
+                  : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'
+              }`}>
               <Icon className="h-3.5 w-3.5" />{label}
             </button>
           ))}
@@ -721,6 +1108,7 @@ export function PaperInteractionPanel({
           </div>
         )}
 
+        {activeTab === 'quiz' && <QuizTab sessionId={sessionId} fileName={fileName} />}
         {activeTab === 'diagram' && <DiagramTab sessionId={sessionId} fileName={fileName} />}
         {activeTab === 'podcast' && <PodcastTab paperTitle={title} paperContent={subtitle} />}
         {activeTab === 'video' && <VideoTab paperTitle={title} paperAbstract={subtitle} />}
