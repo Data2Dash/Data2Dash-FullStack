@@ -3,7 +3,7 @@ import { PdfAnalysis } from '../components/sections/PdfAnalysis';
 
 export function UploadPage() {
   return (
-    <div className="pt-16 min-h-screen bg-white">
+    <div className="h-full bg-white overflow-y-auto custom-scrollbar">
       <PdfAnalysis />
     </div>
   );

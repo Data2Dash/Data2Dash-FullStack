@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Send, Loader2, Sparkles, ExternalLink,
@@ -8,6 +8,10 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { PaperInteractionPanel } from './PaperInteractionPanel';
+import { useSearchStore } from '../../store/useSearchStore';
+import { useAuthStore } from '../../store/authStore';
+import { useChatStore } from '../../store/useChatStore';
+import { workspaceApi } from '../../api/workspaceApi';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -708,15 +712,227 @@ function PaperCard({
   );
 }
 
+// ─── Paper Detail Modal ───────────────────────────────────────────────────────
+
+interface PaperDetailModalProps {
+  paper: RichPaper;
+  pdfFileName: string | null;
+  pdfUrl: string | null;
+  pdfSize: string | null;
+  isImporting: boolean;
+  onClose: () => void;
+  onSendMessage: (message: string) => Promise<{ response: string; sources?: any[] }>;
+}
+
+function PaperDetailModal({
+  paper,
+  pdfFileName,
+  pdfUrl,
+  pdfSize,
+  isImporting,
+  onClose,
+  onSendMessage,
+}: PaperDetailModalProps) {
+  // Close on Escape
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  const sources = paperSources(paper);
+  const authorsStr = (() => {
+    const list = paper.authors_list || [];
+    if (list.length === 0) return paper.authors || 'Unknown';
+    return list.join(', ');
+  })();
+
+  return (
+    <motion.div
+      key="modal-backdrop"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+
+      {/* Modal Card */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="relative w-[92vw] max-w-7xl h-[88vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Left Column: Paper Info ──────────────────────────────── */}
+        <div className="lg:w-[38%] border-b lg:border-b-0 lg:border-r border-stone-200 bg-stone-50 flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="p-6 pb-4 shrink-0">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="flex flex-wrap gap-1.5">
+                {sources.map(src => <SourceBadge key={src} source={src} />)}
+                {paper.citations > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-stone-500 font-semibold bg-white px-2 py-0.5 rounded-full border border-stone-200">
+                    <TrendingUp className="h-3 w-3 text-sage-600" />
+                    {paper.citations.toLocaleString()} citations
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-xl hover:bg-stone-200 text-stone-400 hover:text-stone-700 transition-colors shrink-0"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <h2 className="text-xl font-bold text-stone-900 leading-snug mb-3">
+              {paper.title}
+            </h2>
+            <p className="text-sm text-sage-600 font-medium mb-1">{authorsStr}</p>
+            <div className="flex flex-wrap gap-x-3 text-xs text-stone-500 font-medium">
+              {(paper.published_date || paper.date) && (
+                <span>{(paper.published_date || paper.date).slice(0, 10)}</span>
+              )}
+              {paper.venue && (
+                <>
+                  <span className="text-stone-300">•</span>
+                  <span className="italic">{paper.venue}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-6 space-y-4">
+            {/* Status badge */}
+            {isImporting ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs font-semibold animate-pulse">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                Downloading & indexing PDF…
+              </div>
+            ) : pdfFileName ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-xs font-semibold">
+                ✅ Full PDF indexed · tables, equations & figures available
+              </div>
+            ) : null}
+
+            {/* Relevance */}
+            <RelevanceBar score={paper.semantic_score} />
+
+            {/* Scores */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-white rounded-xl border border-stone-200 p-3 text-center">
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Topic</p>
+                <p className="text-lg font-extrabold text-stone-900">{Math.round((paper.topic_relevance_score || 0) * 100)}%</p>
+              </div>
+              <div className="bg-white rounded-xl border border-stone-200 p-3 text-center">
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Hybrid</p>
+                <p className="text-lg font-extrabold text-stone-900">{Math.round((paper.hybrid_relevance_score || 0) * 100)}%</p>
+              </div>
+            </div>
+
+            {/* Tags */}
+            {(paper.topic_tags?.length > 0 || paper.inferred_topic_tags?.length > 0) && (
+              <div>
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Topics</p>
+                <div className="flex flex-wrap">
+                  {(paper.topic_tags || []).slice(0, 6).map(t => <Chip key={t} label={t} variant="green" />)}
+                  {(paper.inferred_topic_tags || []).slice(0, 4).map(t => <Chip key={t} label={t} variant="gray" />)}
+                </div>
+              </div>
+            )}
+
+            {/* Abstract */}
+            {paper.abstract && (
+              <div>
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Abstract</p>
+                <p className="text-sm text-stone-600 leading-relaxed">{paper.abstract}</p>
+              </div>
+            )}
+
+            {/* Links */}
+            <div className="flex gap-2 pt-2">
+              {paper.url && (
+                <a
+                  href={paper.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-700 transition-colors shadow-sm"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Open Paper
+                </a>
+              )}
+              {pdfUrl && (
+                <a
+                  href={pdfUrl}
+                  download
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-stone-700 text-xs font-semibold border border-stone-200 hover:bg-stone-50 transition-colors"
+                >
+                  <BookOpen className="h-3.5 w-3.5" /> Download PDF
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right Column: Interaction Panel ─────────────────────── */}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <PaperInteractionPanel
+            title={paper.title}
+            subtitle={`${paper.authors} · ${(paper.published_date || paper.date || '').slice(0, 10)}`}
+            fileName={pdfFileName}
+            pdfUrl={pdfUrl}
+            pdfSize={pdfSize}
+            isImporting={isImporting}
+            initialMessage={
+              isImporting ? (
+                <div className="flex items-center gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
+                  <Loader2 className="h-5 w-5 animate-spin text-amber-600 shrink-0" />
+                  <span className="text-amber-800 font-semibold text-sm">Downloading and indexing PDF — extraction will be ready shortly…</span>
+                </div>
+              ) : pdfFileName ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200 text-xs font-semibold">
+                    <span>✅ Full PDF indexed</span>
+                    <span className="text-emerald-500">·</span>
+                    <span className="font-normal">tables, equations & figures available</span>
+                  </div>
+                  <p className="text-sm text-stone-700">I've analysed <strong>{paper.title}</strong>. Ask me to extract a table, explain an equation, or summarise any section.</p>
+                </div>
+              ) : (
+                <>I've analysed <strong className="text-stone-900 font-bold">{paper.title}</strong>. Ask me anything about the methodology, results, or figures.</>
+              )
+            }
+            onSendMessage={onSendMessage}
+          />
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function PaperSearch() {
   const thisYear = new Date().getFullYear();
 
-  const [inputValue, setInputValue] = useState('');
-  const [activeQuery, setActiveQuery] = useState('');
+  // ── Auth + refresh ────────────────────────────────────────────────────────
+  const { token } = useAuthStore();
+  const { triggerRefresh } = useChatStore();
+
+  // ── Search history store (local cache for instant nav) ────────────────────
+  const { activeQuery, activeResults, saveResults, newSearch } = useSearchStore();
+
+  const [inputValue, setInputValue] = useState(activeQuery || '');
   const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<SearchResponse | null>(null);
+  const [results, setResults] = useState<SearchResponse | null>(activeResults ?? null);
 
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -731,7 +947,23 @@ export function PaperSearch() {
   const [pdfSize, setPdfSize] = useState<string | null>(null);
   const [resultsTab, setResultsTab] = useState<'papers' | 'insights'>('papers');
 
+  // Stable UUID-based session ID for PDF import/chat — generated once per component mount
+  const paperSessionId = useRef<string>(
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Sync local state when the store's active session changes (e.g. history click)
+  useEffect(() => {
+    setResults(activeResults ?? null);
+    setInputValue(activeQuery || '');
+    setUiPage(1);
+    setSelectedPaper(null);
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [activeQuery, activeResults]);
 
   const fetchPapers = useCallback(async (query: string) => {
     if (!query.trim()) return;
@@ -746,18 +978,29 @@ export function PaperSearch() {
       });
       const data: SearchResponse = await response.json();
       setResults(data);
+      // 1. Cache locally for instant history navigation
+      saveResults(query.trim(), data);
+      // 2. Persist to backend database
+      if (token) {
+        workspaceApi.saveSearch(
+          token,
+          query.trim(),
+          data.total_found ?? data.total ?? data.ranked_papers?.length,
+        ).catch(err => console.warn('Search save failed:', err));
+        // 3. Refresh sidebar + workspace summary
+        triggerRefresh();
+      }
     } catch (err) {
       console.error('Search error:', err);
     } finally {
       setIsLoading(false);
       scrollRef.current?.scrollTo({ top: 0 });
     }
-  }, []);
+  }, [saveResults, token, triggerRefresh]);
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!inputValue.trim() || isLoading) return;
-    setActiveQuery(inputValue.trim());
     setFilters(DEFAULT_FILTERS);
     fetchPapers(inputValue.trim());
   };
@@ -796,15 +1039,19 @@ export function PaperSearch() {
     setIsImporting(true);
     try {
       const paperId = paper.arxiv_id || paper.id;
+      const importHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) importHeaders['Authorization'] = `Bearer ${token}`;
       const res = await fetch(`${API_URL}/api/pdf/import`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paper_id: paperId, session_id: 'default', title: paper.title }),
+        headers: importHeaders,
+        body: JSON.stringify({ paper_id: paperId, session_id: paperSessionId.current, title: paper.title }),
       });
       const data = await res.json();
       if (data.filename) setPdfFileName(data.filename);
       if (data.pdf_url) setPdfUrl(data.pdf_url);
       if (data.pdf_size) setPdfSize(data.pdf_size);
+      // Refresh workspace sidebar so the imported paper appears under Recent Files
+      triggerRefresh();
     } catch (err) {
       console.error('Import error:', err);
     } finally {
@@ -825,10 +1072,7 @@ export function PaperSearch() {
 
       <div
         ref={scrollRef}
-        className={clsx(
-          'flex-1 overflow-y-auto transition-all duration-500 custom-scrollbar',
-          selectedPaper ? 'lg:pr-[42%]' : '',
-        )}
+        className="flex-1 overflow-y-auto custom-scrollbar"
       >
         <div className="mx-auto max-w-4xl px-4 py-8">
 
@@ -1108,88 +1352,65 @@ export function PaperSearch() {
         </div>
       </div>
 
+      {/* ── Paper Detail Modal ──────────────────────────────────────────── */}
       <AnimatePresence>
         {selectedPaper && (
-          <motion.div
-            key="panel"
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '100%', opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-            className="fixed right-0 top-14 bottom-0 w-full lg:w-[42%] border-l border-stone-200 bg-stone-50 shadow-2xl z-40 flex flex-col"
-          >
-            <PaperInteractionPanel
-              title={selectedPaper.title}
-              subtitle={`${selectedPaper.authors} · ${(selectedPaper.published_date || selectedPaper.date || '').slice(0, 10)}`}
-              fileName={pdfFileName}
-              pdfUrl={pdfUrl}
-              pdfSize={pdfSize}
-              initialMessage={
-                isImporting ? (
-                  <div className="flex items-center gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
-                    <Loader2 className="h-5 w-5 animate-spin text-amber-600 shrink-0" />
-                    <span className="text-amber-800 font-semibold text-sm">Downloading and indexing PDF — table &amp; equation extraction will be ready shortly…</span>
-                  </div>
-                ) : pdfFileName ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200 text-xs font-semibold">
-                      <span>✅ Full PDF indexed</span>
-                      <span className="text-emerald-500">·</span>
-                      <span className="font-normal">tables, equations &amp; figures available</span>
-                    </div>
-                    <p className="text-sm text-stone-700">I've analysed <strong>{selectedPaper.title}</strong>. Ask me to extract a table, explain an equation, or summarise any section.</p>
-                  </div>
-                ) : (
-                  <>I've analysed <strong className="text-stone-900 font-bold">{selectedPaper.title}</strong>. Ask me anything about the methodology, results, or figures.</>
-                )
-              }
-              onClose={() => setSelectedPaper(null)}
-              onSendMessage={async (message) => {
-                // Once the PDF is imported (pdfFileName is set), route to /api/pdf/chat
-                // which uses EnhancedRAGSystem and can read the actual tables/equations.
-                // While still importing, fall back to /api/chat/ai with abstract context.
-                if (pdfFileName) {
-                  const resp = await fetch(`${API_URL}/api/pdf/chat`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: message, session_id: 'default' }),
-                  });
-                  const data = await resp.json();
-                  // Build a response string: answer + inline equation/table blocks
-                  const parts: string[] = [];
-                  if (data.answer) parts.push(data.answer);
-                  for (const eq of (data.equations || [])) {
-                    const label = eq.label ?? `Equation ${eq.global_number ?? '?'}`;
-                    const latex = eq.normalized_latex || eq.latex || eq.raw_text || '';
-                    if (latex) parts.push(`**📐 ${label}**\n$$\n${latex}\n$$`);
-                  }
-                  for (const tb of (data.tables || [])) {
-                    const label = tb.label ?? `Table ${tb.global_number ?? '?'}`;
-                    const caption = tb.caption ? ` — ${tb.caption}` : '';
-                    const content = tb.markdown || tb.raw_text || '';
-                    if (content) parts.push(`**📊 ${label}${caption}**\n\n${content}`);
-                  }
-                  return { response: parts.join('\n\n') || data.response || 'No content found.' };
-                }
-
-                // Still importing — answer from abstract context only
-                const abstractSnippet = (selectedPaper.abstract || '').slice(0, 600);
-                const systemContext =
-                  `You are analysing a research paper titled "${selectedPaper.title}" ` +
-                  `by ${selectedPaper.authors}. ` +
-                  `Abstract: ${abstractSnippet}. ` +
-                  `Answer based on this context and your knowledge. ` +
-                  `Note: the full PDF is still being processed — for table/figure extraction ask again in a moment.`;
-                const resp = await fetch(`${API_URL}/api/chat/ai`, {
+          <PaperDetailModal
+            paper={selectedPaper}
+            pdfFileName={pdfFileName}
+            pdfUrl={pdfUrl}
+            pdfSize={pdfSize}
+            isImporting={isImporting}
+            onClose={() => setSelectedPaper(null)}
+            onSendMessage={async (message) => {
+              const sid = paperSessionId.current;
+              if (pdfFileName) {
+                const resp = await fetch(`${API_URL}/api/pdf/chat`, {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ query: message, history: [{ role: 'system', content: systemContext }] }),
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                  },
+                  body: JSON.stringify({ query: message, session_id: sid }),
                 });
                 const data = await resp.json();
-                return { response: data.response ?? data.answer ?? 'No response.' };
-              }}
-            />
-          </motion.div>
+                if (!resp.ok) {
+                  return { response: data.detail || 'PDF chat failed.' };
+                }
+                const parts: string[] = [];
+                if (data.answer) parts.push(data.answer);
+                for (const eq of (data.equations || [])) {
+                  const label = eq.label ?? `Equation ${eq.global_number ?? '?'}`;
+                  const latex = eq.normalized_latex || eq.latex || eq.raw_text || '';
+                  if (latex) parts.push(`**📐 ${label}**\n$$\n${latex}\n$$`);
+                }
+                for (const tb of (data.tables || [])) {
+                  const label = tb.label ?? `Table ${tb.global_number ?? '?'}`;
+                  const caption = tb.caption ? ` — ${tb.caption}` : '';
+                  const content = tb.markdown || tb.raw_text || '';
+                  if (content) parts.push(`**📊 ${label}${caption}**\n\n${content}`);
+                }
+                return { response: parts.join('\n\n') || 'The document was processed but no relevant content was found for this query. Try rephrasing your question.' };
+              }
+              const abstractSnippet = (selectedPaper.abstract || '').slice(0, 600);
+              const systemContext =
+                `You are analysing a research paper titled "${selectedPaper.title}" ` +
+                `by ${selectedPaper.authors}. ` +
+                `Abstract: ${abstractSnippet}. ` +
+                `Answer based on this context and your knowledge. ` +
+                `Note: the full PDF is still being processed — for table/figure extraction ask again in a moment.`;
+              const resp = await fetch(`${API_URL}/api/chat/ai`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ query: message, history: [{ role: 'system', content: systemContext }], session_id: sid }),
+              });
+              const data = await resp.json();
+              return { response: data.response ?? data.answer ?? 'No response.' };
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

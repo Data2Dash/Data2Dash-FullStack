@@ -39,9 +39,18 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 
 # Auth imports
-from database import engine, Base
-from routers.auth import router as auth_router
+from database import engine, Base, get_db
+from models import (
+    File as FileModel, SearchHistory, Workspace, User, 
+    ChatSession, ChatMessage, SenderType, SessionType
+)
+from routers.auth import router as auth_router, get_current_user, bearer_scheme
+from auth_utils import decode_access_token
 from routers.documents import router as documents_router
+from routers.workspace import router as workspace_router
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from fastapi import Depends
 
 # Initialize FastAPI app
 # Create DB tables on startup
@@ -52,6 +61,7 @@ app = FastAPI(title="Youware AI Backend")
 # Register routers
 app.include_router(auth_router)
 app.include_router(documents_router)
+app.include_router(workspace_router)
 
 # Configure CORS
 # NOTE: allow_origins=["*"] + allow_credentials=True is forbidden by the CORS spec.
@@ -60,8 +70,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         FRONTEND_URL,
-        "http://localhost:5175",
-        "http://127.0.0.1:5175",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
@@ -251,25 +261,102 @@ def health_check():
     return {"status": "ok", "message": "AI Backend is running"}
 
 @app.post("/api/search")
-def search(request: SearchRequest):
+def search(request: SearchRequest, db: Session = Depends(get_db)):
     agent = get_search_agent()
     try:
         result = agent.run(request.query)
+        # Persist search query anonymously (no user auth on this endpoint)
+        try:
+            sh = SearchHistory(
+                user_id=None,
+                workspace_id=None,
+                query_text=request.query,
+                search_type="ai",
+                result_count=None,
+            )
+            db.add(sh)
+            db.commit()
+        except Exception:
+            db.rollback()  # non-fatal
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat/ai")
-def chat_ai(request: AIChatRequest):
+def chat_ai(
+    request: AIChatRequest, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     agent = get_chat_agent()
     try:
-        result = agent.run(request.query, request.history, request.session_id)
+        # Normalise to a plain string — the DB column is String(36) on SQLite
+        sid = str(uuid.UUID(request.session_id))  # validates & normalises format
+        
+        # 1. Get or create session
+        session = db.query(ChatSession).filter(ChatSession.session_id == sid).first()
+        if not session:
+            ws = db.query(Workspace).filter(Workspace.user_id == current_user.id).first()
+            if not ws:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            
+            # Generate a title from the first query (first 50 chars)
+            title = request.query[:50] + "..." if len(request.query) > 50 else request.query
+            
+            session = ChatSession(
+                session_id=sid,
+                user_id=current_user.id,
+                workspace_id=ws.id,
+                title=title,
+                session_type=SessionType.ai
+            )
+            db.add(session)
+            db.flush()
+
+        # 2. Save User Message
+        user_msg = ChatMessage(
+            session_id=sid,
+            sender_type=SenderType.user,
+            content=request.query
+        )
+        db.add(user_msg)
+
+        # 3. Get AI Response
+        print(f"Calling ChatAgent.run for session {sid}...")
+        # Pass the global pdf_agent singleton so DocumentReader can access loaded sessions
+        _pdf = get_pdf_agent() if GROQ_API_KEY else None
+        result = agent.run(request.query, request.history, sid, pdf_agent_instance=_pdf)
+        print("ChatAgent.run completed successfully.")
+        
+        # 4. Save AI Message
+        ai_msg = ChatMessage(
+            session_id=sid,
+            sender_type=SenderType.agent,
+            content=result.get("response", ""),
+            message_metadata={"sources": result.get("sources", [])}
+        )
+        db.add(ai_msg)
+        
+        # Update session timestamp
+        session.last_message_at = func.now()
+        db.commit()
+
         return result
+    except HTTPException:
+        raise  # Don't swallow 404s etc.
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        db.rollback()
+        import traceback
+        print(f"CHAT_AI ERROR: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")
 
 @app.post("/api/papers/search")
-def search_papers(request: SearchRequest):
+def search_papers(
+    request: SearchRequest,
+    db: Session = Depends(get_db),
+    credentials = Depends(bearer_scheme),
+):
     """
     Enhanced hybrid search endpoint.
     Returns ranked papers from ArXiv + OpenAlex with LLM query expansion,
@@ -282,6 +369,31 @@ def search_papers(request: SearchRequest):
             page=request.page,
             per_page=request.per_page,
         )
+        # Persist search to history — link to user if token provided
+        try:
+            result_count = data.get("total") if isinstance(data, dict) else None
+            user_id = None
+            workspace_id = None
+            if credentials:
+                payload = decode_access_token(credentials.credentials)
+                if payload:
+                    u = db.query(User).filter(User.id == int(payload["sub"])).first()
+                    if u:
+                        user_id = u.id
+                        ws = db.query(Workspace).filter(Workspace.user_id == u.id).first()
+                        if ws:
+                            workspace_id = ws.id
+            sh = SearchHistory(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                query_text=request.query,
+                search_type="academic",
+                result_count=result_count,
+            )
+            db.add(sh)
+            db.commit()
+        except Exception:
+            db.rollback()  # non-fatal
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -289,44 +401,151 @@ def search_papers(request: SearchRequest):
 @app.post("/api/pdf/upload")
 async def upload_pdf(
     file: UploadFile = File(...),
-    session_id: str = Form(...)
+    session_id: str = Form(...),
+    db: Session = Depends(get_db),
+    credentials = Depends(bearer_scheme),
 ):
     agent = get_pdf_agent()
-    
+
+    # Resolve the current user from the optional Bearer token
+    current_user = None
+    if credentials:
+        try:
+            payload = decode_access_token(credentials.credentials)
+            if payload:
+                current_user = db.query(User).filter(User.id == int(payload["sub"])).first()
+        except Exception:
+            pass  # anonymous upload — continue without DB persistence
+
     # Save file in session-specific directory
     upload_dir = os.path.join("data", "uploads", session_id)
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, file.filename)
-    
+
     try:
-        # Save the file permanently for the session
+        # Write file to disk
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-            
-        # Process PDF (agent will use the permanent path)
+
+        # Persist file metadata to DB when the user is authenticated
+        if current_user:
+            try:
+                ws = db.query(Workspace).filter(Workspace.user_id == current_user.id).first()
+                file_size = os.path.getsize(file_path)
+                ext = os.path.splitext(file.filename)[-1].lstrip(".").lower() or "bin"
+                file_record = FileModel(
+                    user_id=current_user.id,
+                    workspace_id=ws.id if ws else None,
+                    filename=os.path.basename(file_path),
+                    original_name=file.filename,
+                    file_type=ext,
+                    mime_type=file.content_type,
+                    size_bytes=file_size,
+                    storage_path=file_path,
+                )
+                db.add(file_record)
+                db.commit()
+            except Exception as db_err:
+                db.rollback()
+                print(f"UPLOAD DB WARNING: {db_err}")  # non-fatal — file is still on disk
+
+        # Index PDF with the RAG agent
         result = agent.process_pdf_with_name(file_path, session_id, file.filename)
-        
+
         # Return accessible URL
         file_url = f"{BACKEND_URL}/api/uploads/{session_id}/{file.filename}"
-        
+
         return {
-            "message": result, 
+            "message": result,
             "filename": file.filename,
-            "url": file_url
+            "url": file_url,
         }
-        
+
     except Exception as e:
-        # Optional: clean up ONLY if the initial copy failed
+        # Clean up empty files (partial writes)
         if os.path.exists(file_path) and not os.path.getsize(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/pdf/chat")
-def chat_pdf(request: PDFChatRequest):
+def chat_pdf(
+    request: PDFChatRequest,
+    db: Session = Depends(get_db),
+    credentials = Depends(bearer_scheme),
+):
     agent = get_pdf_agent()
-    result = agent.get_response(request.query, request.session_id)
-    # result is now a structured dict {answer, equations, tables, sources}
-    return result
+    try:
+        # Use the session_id as-is for the agent (it's an in-memory key).
+        # Only normalise to UUID format for DB storage if it looks like one.
+        agent_sid = request.session_id  # raw key used in agent.systems dict
+        try:
+            db_sid = str(uuid.UUID(request.session_id))  # normalized UUID for DB
+        except (ValueError, AttributeError):
+            # Not a valid UUID — generate a deterministic one from the raw id
+            db_sid = str(uuid.uuid5(uuid.NAMESPACE_DNS, request.session_id))
+
+        # Resolve the current user (optional — upload endpoint is unauthenticated)
+        current_user = None
+        if credentials:
+            try:
+                payload = decode_access_token(credentials.credentials)
+                if payload:
+                    current_user = db.query(User).filter(User.id == int(payload["sub"])).first()
+            except Exception:
+                pass  # proceed without auth
+
+        # Persist chat session to DB only when we have a logged-in user
+        if current_user:
+            session = db.query(ChatSession).filter(ChatSession.session_id == db_sid).first()
+            if not session:
+                ws = db.query(Workspace).filter(Workspace.user_id == current_user.id).first()
+                if ws:
+                    title = request.query[:50] + "..." if len(request.query) > 50 else request.query
+                    session = ChatSession(
+                        session_id=db_sid,
+                        user_id=current_user.id,
+                        workspace_id=ws.id,
+                        title=title,
+                        session_type=SessionType.pdf
+                    )
+                    db.add(session)
+                    db.flush()
+
+            user_msg = ChatMessage(
+                session_id=db_sid,
+                sender_type=SenderType.user,
+                content=request.query
+            )
+            db.add(user_msg)
+
+        # Get response from the agent using the original session key
+        result = agent.get_response(request.query, agent_sid)
+
+        if current_user:
+            ai_msg = ChatMessage(
+                session_id=db_sid,
+                sender_type=SenderType.agent,
+                content=result.get("answer", ""),
+                message_metadata={
+                    "equations": result.get("equations", []),
+                    "tables": result.get("tables", []),
+                    "sources": result.get("sources", [])
+                }
+            )
+            db.add(ai_msg)
+            if 'session' in dir() and session:
+                session.last_message_at = func.now()
+            db.commit()
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        print(f"CHAT_PDF ERROR: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")
 
 @app.get("/api/pdf/list/{session_id}")
 def list_pdfs(session_id: str):
@@ -521,48 +740,84 @@ async def analyze_figure(request: FigureAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/pdf/import")
-async def import_paper(request: ImportPaperRequest):
+async def import_paper(
+    request: ImportPaperRequest,
+    db: Session = Depends(get_db),
+    credentials = Depends(bearer_scheme),
+):
     """Download a paper from ArXiv and initiate figure extraction"""
+    # Resolve optional auth
+    current_user = None
+    if credentials:
+        try:
+            payload = decode_access_token(credentials.credentials)
+            if payload:
+                current_user = db.query(User).filter(User.id == int(payload["sub"])).first()
+        except Exception:
+            pass
+
     try:
         import arxiv
         client = arxiv.Client()
         search = arxiv.Search(id_list=[request.paper_id])
         result = next(client.results(search))
-        
+
         # Save directory
         upload_dir = os.path.join("data", "uploads", request.session_id)
         os.makedirs(upload_dir, exist_ok=True)
-        
+
         # Filename logic: use a sanitized title or paper_id
         safe_title = re.sub(r'[^\w\s-]', '', request.title).strip().replace(' ', '_')[:50]
         filename = f"{safe_title}_{request.paper_id}.pdf"
         file_path = os.path.join(upload_dir, filename)
-        
+
         # Download
         result.download_pdf(dirpath=upload_dir, filename=filename)
-        
+
         # Extract figures immediately
         agent = get_vision_agent()
         figure_paths = agent.extract_figures(file_path, request.session_id)
-        
+
         # Process with PDF agent for chat as well
-        pdf_agent = get_pdf_agent()
-        pdf_agent.process_pdf_with_name(file_path, request.session_id, filename)
-        
+        pdf_agent_inst = get_pdf_agent()
+        pdf_agent_inst.process_pdf_with_name(file_path, request.session_id, filename)
+
         # Get file size
         file_size_bytes = os.path.getsize(file_path)
         size_mb = round(file_size_bytes / (1024 * 1024), 1)
         size_str = f"{size_mb} MB" if size_mb >= 0.1 else f"{round(file_size_bytes / 1024)} KB"
-        
+
+        # Persist to DB when authenticated
+        if current_user:
+            try:
+                ws = db.query(Workspace).filter(Workspace.user_id == current_user.id).first()
+                ext = os.path.splitext(filename)[-1].lstrip(".").lower() or "pdf"
+                file_record = FileModel(
+                    user_id=current_user.id,
+                    workspace_id=ws.id if ws else None,
+                    filename=filename,
+                    original_name=f"{request.title}.pdf",
+                    file_type=ext,
+                    mime_type="application/pdf",
+                    size_bytes=file_size_bytes,
+                    storage_path=file_path,
+                )
+                db.add(file_record)
+                db.commit()
+            except Exception as db_err:
+                db.rollback()
+                print(f"IMPORT DB WARNING: {db_err}")
+
         return {
             "message": "Paper imported and processed successfully",
             "filename": filename,
             "figure_count": len(figure_paths),
             "pdf_url": f"{BACKEND_URL}/api/uploads/{request.session_id}/{filename}",
-            "pdf_size": size_str
+            "pdf_size": size_str,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to import paper: {str(e)}")
+
 
 # Podcast Endpoints
 

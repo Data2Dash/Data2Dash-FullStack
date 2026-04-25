@@ -12,8 +12,10 @@ ACCESS_TOKEN_EXPIRE_DAYS = 30
 
 def hash_password(password: str) -> str:
     # bcrypt requires bytes
+    # rounds=10 is the industry standard for fast-but-secure local hashing
+    # (default 12 adds 3-5s latency per login on typical hardware)
     pwd_bytes = password.encode('utf-8')
-    salt = bcrypt.gensalt()
+    salt = bcrypt.gensalt(rounds=10)
     hashed = bcrypt.hashpw(pwd_bytes, salt)
     return hashed.decode('utf-8')
 

@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, ArrowUp, BookOpen, MessageCircle, Sparkles, User, FileText, Globe, X } from 'lucide-react';
+import { ArrowUp, BookOpen, MessageCircle, Sparkles, FileText, Globe, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -11,38 +10,12 @@ import 'katex/dist/katex.min.css';
 import { codeComponents } from '../components/ui/CodeBlock';
 import { cleanTableMarkdown } from '../utils/tableUtils';
 import { normalizeEquations } from '../utils/mathUtils';
-
-interface Equation {
-  label?: string;
-  global_number?: number | null;
-  page_number?: number | null;
-  normalized_latex?: string;
-  latex?: string;
-  raw_text?: string;
-  text?: string;
-}
-
-interface Table {
-  label?: string;
-  global_number?: number | null;
-  page_number?: number | null;
-  caption?: string;
-  markdown?: string;
-  raw_text?: string;
-}
-
-interface Message {
-  role: 'user' | 'ai';
-  content: string;
-  sources?: string[];
-  equations?: Equation[];
-  tables?: Table[];
-}
+import { useChatStore, Message } from '../store/useChatStore';
+import { useAuthStore } from '../store/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-// ─── Equation block rendered with KaTeX via ReactMarkdown ──────────────────
-function EquationBlock({ eq }: { eq: Equation }) {
+function EquationBlock({ eq }: { eq: any }) {
   const label = eq.label ?? `Equation ${eq.global_number ?? '?'}`;
   const latex = eq.normalized_latex || eq.latex || '';
   const raw = eq.raw_text || eq.text || '';
@@ -63,8 +36,7 @@ function EquationBlock({ eq }: { eq: Equation }) {
   );
 }
 
-// ─── Table block ───────────────────────────────────────────────────────────
-function TableBlock({ tb }: { tb: Table }) {
+function TableBlock({ tb }: { tb: any }) {
   const label = tb.label ?? `Table ${tb.global_number ?? '?'}`;
   const caption = tb.caption ?? label;
   const md = tb.markdown ?? '';
@@ -76,9 +48,11 @@ function TableBlock({ tb }: { tb: Table }) {
         📊 {label}{caption && caption !== label ? ` — ${caption}` : ''}{tb.page_number != null ? ` · Page ${tb.page_number}` : ''}
       </p>
       {md ? (
-        <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
-          {md}
-        </ReactMarkdown>
+        <div className="prose prose-sm max-w-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {md}
+          </ReactMarkdown>
+        </div>
       ) : raw ? (
         <pre className="text-xs text-slate-700 overflow-x-auto whitespace-pre-wrap">{raw}</pre>
       ) : null}
@@ -87,17 +61,19 @@ function TableBlock({ tb }: { tb: Table }) {
 }
 
 export function ChatPage() {
+  const { 
+    messages, sessionId, pdfLoaded, pdfName, 
+    setPdfInfo, triggerRefresh, addMessage 
+  } = useChatStore();
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [sessionId] = useState(() => Math.random().toString(36).substring(7));
-  const [pdfLoaded, setPdfLoaded] = useState(false);
-  const [pdfName, setPdfName] = useState<string | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
@@ -113,8 +89,7 @@ export function ChatPage() {
     }
 
     setIsSearching(true);
-    const newHistory = [...messages, { role: 'user', content: `[Uploaded: ${file.name}]` } as Message];
-    setMessages(newHistory);
+    addMessage({ role: 'user', content: `[Uploaded: ${file.name}]` });
 
     try {
       const formData = new FormData();
@@ -128,18 +103,15 @@ export function ChatPage() {
 
       if (!response.ok) throw new Error('Upload failed');
 
-      setPdfLoaded(true);
-      setPdfName(file.name);
+      setPdfInfo(true, file.name);
 
-      setMessages([...newHistory, {
+      addMessage({
         role: 'ai',
         content: `✅ **${file.name}** processed successfully!\n\nYou can now ask questions about its content, equations, and tables.`,
-        equations: [],
-        tables: [],
-      }]);
+      });
     } catch (error) {
       console.error('Error uploading file:', error);
-      setMessages([...newHistory, { role: 'ai', content: `Sorry, there was an error uploading ${file.name}.` }]);
+      addMessage({ role: 'ai', content: `Sorry, there was an error uploading ${file.name}.` });
     } finally {
       setIsSearching(false);
     }
@@ -153,24 +125,39 @@ export function ChatPage() {
     setIsSearching(true);
     setQuery('');
 
-    const newHistory = [...messages, { role: 'user', content: textToSearch } as Message];
-    setMessages(newHistory);
+    // Add user message to UI immediately
+    addMessage({ role: 'user', content: textToSearch });
 
     try {
-      let aiMessage: Message;
+      const { token } = useAuthStore.getState();
+      let aiMessage: any;
 
       if (pdfLoaded) {
-        // ── PDF mode: route to /api/pdf/chat ──────────────────────────────
         const resp = await fetch(`${API_URL}/api/pdf/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: textToSearch, session_id: sessionId }),
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            query: textToSearch,
+            session_id: sessionId
+          }),
         });
 
-        if (!resp.ok) throw new Error('PDF chat request failed');
+        if (!resp.ok) {
+          const text = await resp.text();
+          let detail = 'PDF chat request failed';
+          try {
+            const errData = JSON.parse(text);
+            detail = errData.detail || JSON.stringify(errData);
+          } catch (e) {
+            detail = text || `Error ${resp.status}: ${resp.statusText}`;
+          }
+          throw new Error(detail);
+        }
         const data = await resp.json();
 
-        // data = { answer, equations, tables, sources }
         aiMessage = {
           role: 'ai',
           content: data.answer || '',
@@ -181,7 +168,6 @@ export function ChatPage() {
           ),
         };
       } else {
-        // ── General AI mode ───────────────────────────────────────────────
         const backendHistory = messages.map(msg => ({
           role: msg.role,
           content: msg.content
@@ -189,7 +175,10 @@ export function ChatPage() {
 
         const resp = await fetch(`${API_URL}/api/chat/ai`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify({
             query: textToSearch,
             history: backendHistory,
@@ -197,37 +186,45 @@ export function ChatPage() {
           }),
         });
 
-        if (!resp.ok) throw new Error('Network response was not ok');
+        if (!resp.ok) {
+          const text = await resp.text();
+          let detail = 'Network response was not ok';
+          try {
+            const errData = JSON.parse(text);
+            detail = errData.detail || JSON.stringify(errData);
+          } catch (e) {
+            detail = text || `Error ${resp.status}: ${resp.statusText}`;
+          }
+          throw new Error(detail);
+        }
         const data = await resp.json();
 
         aiMessage = {
           role: 'ai',
           content: data.response,
           sources: data.sources,
-          equations: [],
-          tables: [],
         };
       }
 
-      setMessages([...newHistory, aiMessage]);
-    } catch (error) {
-      console.error('Error fetching chat response:', error);
-      setMessages([...newHistory, {
-        role: 'ai',
-        content: 'Sorry, I encountered an error while processing your request. Please ensure the backend is running.'
-      }]);
-    } finally {
       setIsSearching(false);
+      addMessage(aiMessage);
+      
+      // Refresh sidebar to show the new/updated session
+      triggerRefresh();
+    } catch (error: any) {
+      console.error('Error fetching chat response:', error);
+      setIsSearching(false);
+      addMessage({
+        role: 'ai',
+        content: `Error: ${error.message || 'I encountered an error while processing your request.'}`
+      });
     }
   };
 
   const handleClearPdf = () => {
     fetch(`${API_URL}/api/pdf/clear/${sessionId}`, { method: 'DELETE' }).catch(() => {});
-    setPdfLoaded(false);
-    setPdfName(null);
+    setPdfInfo(false, null);
   };
-
-  const handlePlusClick = () => fileInputRef.current?.click();
 
   const renderSourceIcon = (sourceStr: string) => {
     if (sourceStr.toLowerCase().includes('arxiv')) return <FileText className="h-3 w-3 mr-1" />;
@@ -235,220 +232,195 @@ export function ChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col pt-14 relative">
-      <div className="flex-1 flex flex-col items-center p-4 w-full max-w-5xl mx-auto h-[calc(100vh-3.5rem)]">
-
-        {messages.length === 0 ? (
-          <div className="flex-1 w-full flex flex-col items-center justify-center">
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-10 w-full"
-            >
-              <div className="flex items-center justify-center gap-2.5 mb-4 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-900 text-white">
-                  <Sparkles className="h-6 w-6" />
-                </div>
-                <h1 className="text-4xl font-bold text-[#1E293B] tracking-tight">Data2Dash AI</h1>
-              </div>
-              <h2 className="text-lg font-semibold text-[#334155]">
-                Your AI Research Assistant for Machine Learning &amp; AI Papers
-              </h2>
-            </motion.div>
-
-            <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-3xl mb-8">
-              <button
-                onClick={() => handleSearch(undefined, "Explain what a Transformer Model is")}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-slate-200 shadow-sm text-sm text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+    <div className="h-full bg-[#F8FAFC] flex flex-col relative overflow-hidden">
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto custom-scrollbar p-4 w-full flex flex-col items-center"
+      >
+        <div className="w-full max-w-4xl flex flex-col min-h-full">
+          {messages.length === 0 ? (
+            <div className="flex-1 w-full flex flex-col items-center justify-center py-12">
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center mb-10 w-full"
               >
-                <MessageCircle className="h-4 w-4 text-slate-500" />
-                Explain Transformers
+                <div className="flex items-center justify-center gap-2.5 mb-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-900 text-white shadow-soft">
+                    <Sparkles className="h-7 w-7" />
+                  </div>
+                  <h1 className="text-4xl font-extrabold text-[#1E293B] tracking-tight">Data2Dash AI</h1>
+                </div>
+                <h2 className="text-lg font-semibold text-[#64748B] max-w-md mx-auto">
+                  Research assistant for machine learning and academic literature.
+                </h2>
+              </motion.div>
+
+              <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-3xl mb-8">
+                {[
+                  "Explain Transformer Models",
+                  "Latest advancements in RAG",
+                  "What is Prompt Engineering?"
+                ].map((text, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSearch(undefined, text)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white rounded-2xl border border-slate-200 shadow-sm text-sm font-semibold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all active:scale-95"
+                  >
+                    <MessageCircle className="h-4 w-4 text-slate-400" />
+                    {text}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 w-full">
+              <AnimatePresence initial={false}>
+                {messages.map((msg, idx) => (
+                  <motion.div
+                    key={`msg-${idx}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={clsx(
+                      "mb-8 flex gap-4 w-full",
+                      msg.role === 'user' ? "justify-end" : "justify-start"
+                    )}
+                  >
+                    {msg.role === 'ai' && (
+                      <div className="flex-shrink-0 mt-1">
+                        <div className="h-9 w-9 rounded-xl bg-stone-900 flex items-center justify-center text-white shadow-soft">
+                          <Sparkles className="h-5 w-5" />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className={clsx(
+                      "px-6 py-4 rounded-2xl max-w-[85%] shadow-sm transition-shadow hover:shadow-md",
+                      msg.role === 'user'
+                        ? "bg-slate-900 text-white rounded-tr-sm font-medium"
+                        : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm prose prose-slate max-w-none prose-sm"
+                    )}>
+                      {msg.role === 'ai' ? (
+                        <>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                            components={codeComponents}
+                          >
+                            {cleanTableMarkdown(normalizeEquations(msg.content))}
+                          </ReactMarkdown>
+
+                          {msg.equations && msg.equations.length > 0 && (
+                            <div className="mt-4 space-y-3 not-prose">
+                              {msg.equations.map((eq: any, eIdx: number) => (
+                                <EquationBlock key={eIdx} eq={eq} />
+                              ))}
+                            </div>
+                          )}
+
+                          {msg.tables && msg.tables.length > 0 && (
+                            <div className="mt-4 space-y-3 not-prose">
+                              {msg.tables.map((tb: any, tIdx: number) => (
+                                <TableBlock key={tIdx} tb={tb} />
+                              ))}
+                            </div>
+                          )}
+
+                          {msg.sources && msg.sources.length > 0 && (
+                            <div className="mt-6 pt-4 border-t border-slate-100 flex flex-wrap gap-2 not-prose">
+                              {msg.sources.map((source: string, sIdx: number) => {
+                                const parts = source.split(':');
+                                const type = parts[0];
+                                const title = parts.slice(1).join(':').substring(0, 50) + (parts.slice(1).join(':').length > 50 ? '...' : '');
+                                return (
+                                  <div key={sIdx} className="inline-flex items-center px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 font-bold transition-colors hover:bg-slate-100">
+                                    {renderSourceIcon(type)}
+                                    <span className="truncate">{title}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="whitespace-pre-wrap leading-relaxed m-0">{msg.content}</p>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+                {isSearching && (
+                  <motion.div
+                    key="loading-dots"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, transition: { duration: 0 } }}
+                    className="flex gap-4 w-full mb-8"
+                  >
+                    <div className="h-9 w-9 rounded-xl bg-stone-900 flex items-center justify-center text-white shadow-soft">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <div className="bg-white border border-slate-200 shadow-sm px-6 py-4 rounded-2xl rounded-tl-sm flex items-center gap-2">
+                      <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                  </motion.div>
+                )}
+                <div ref={messagesEndRef} className="h-4" />
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Input Section */}
+      <div className="w-full bg-white border-t border-slate-200 p-4 shrink-0 flex flex-col items-center">
+        {pdfLoaded && pdfName && (
+          <div className="w-full max-w-4xl mb-3 flex items-center gap-3 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-2xl text-sm text-indigo-700 animate-in fade-in slide-in-from-bottom-2">
+            <FileText className="h-4 w-4" />
+            <span className="flex-1 truncate font-semibold">Active Paper: {pdfName}</span>
+            <button onClick={handleClearPdf} className="p-1 hover:bg-indigo-100 rounded-full transition-colors"><X className="h-4 w-4" /></button>
+          </div>
+        )}
+
+        <div className="w-full max-w-4xl relative">
+          <form onSubmit={(e) => handleSearch(e)} className="relative group">
+            <textarea
+              className="w-full resize-none border border-slate-200 focus:border-slate-400 focus:ring-0 rounded-3xl p-4 pr-16 min-h-[60px] max-h-[200px] text-slate-700 placeholder:text-slate-400 shadow-sm transition-all focus:shadow-md"
+              placeholder={pdfLoaded ? "Ask about the paper..." : "Ask Data2Dash AI anything..."}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSearch();
+                }
+              }}
+              rows={1}
+            />
+            <div className="absolute right-2 bottom-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="h-10 w-10 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+                title="Upload Source"
+              >
+                <BookOpen className="h-5 w-5" />
               </button>
               <button
-                onClick={() => handleSearch(undefined, "What are the latest advancements in Retrieval Augmented Generation (RAG)?")}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-slate-200 shadow-sm text-sm text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+                type="submit"
+                disabled={!query.trim() || isSearching}
+                className={clsx(
+                  "h-10 w-10 rounded-full flex items-center justify-center transition-all shadow-sm",
+                  query.trim() && !isSearching ? "bg-stone-900 text-white hover:bg-stone-800 active:scale-95" : "bg-slate-100 text-slate-300"
+                )}
               >
-                <MessageCircle className="h-4 w-4 text-slate-500" />
-                Latest in RAG
+                {isSearching ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <ArrowUp className="h-5 w-5" />}
               </button>
             </div>
-          </div>
-        ) : (
-          <div className="flex-1 w-full overflow-y-auto mb-4 p-2 custom-scrollbar">
-            <AnimatePresence>
-              {messages.map((msg, idx) => (
-                <motion.div
-                  key={`msg-${idx}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={clsx(
-                    "mb-6 flex gap-4 w-full max-w-4xl mx-auto",
-                    msg.role === 'user' ? "justify-end" : "justify-start"
-                  )}
-                >
-                  {msg.role === 'ai' && (
-                    <div className="flex-shrink-0 mt-1">
-                      <div className="h-8 w-8 rounded-lg bg-stone-900 flex items-center justify-center text-white">
-                        <Sparkles className="h-4 w-4" />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className={clsx(
-                    "px-5 py-3.5 rounded-2xl max-w-[85%]",
-                    msg.role === 'user'
-                      ? "bg-slate-900 text-white rounded-tr-sm"
-                      : "bg-white border border-slate-200 shadow-sm text-slate-800 rounded-tl-sm prose prose-sm max-w-none prose-slate"
-                  )}>
-                    {msg.role === 'ai' ? (
-                      <>
-                        {/* Main answer text */}
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm, remarkMath]}
-                          rehypePlugins={[rehypeKatex]}
-                          components={codeComponents}
-                        >
-                          {cleanTableMarkdown(normalizeEquations(msg.content))}
-                        </ReactMarkdown>
-
-                        {/* Equations */}
-                        {msg.equations && msg.equations.length > 0 && (
-                          <div className="mt-3 space-y-2 not-prose">
-                            {msg.equations.map((eq, eIdx) => (
-                              <EquationBlock key={eIdx} eq={eq} />
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Tables */}
-                        {msg.tables && msg.tables.length > 0 && (
-                          <div className="mt-3 space-y-2 not-prose">
-                            {msg.tables.map((tb, tIdx) => (
-                              <TableBlock key={tIdx} tb={tb} />
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Sources */}
-                        {msg.sources && msg.sources.length > 0 && (
-                          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 not-prose">
-                            {msg.sources.map((source, sIdx) => {
-                              const parts = source.split(':');
-                              const type = parts[0];
-                              const title = parts.slice(1).join(':').substring(0, 45) + (parts.slice(1).join(':').length > 45 ? '...' : '');
-                              return (
-                                <div key={sIdx} className="inline-flex items-center px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-600 font-medium">
-                                  {renderSourceIcon(type)}
-                                  <span className="truncate">{title}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="whitespace-pre-wrap leading-relaxed m-0 text-[15px]">{msg.content}</p>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-              {isSearching && (
-                <motion.div key="loading-bubble" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.2 }} className="flex gap-4 w-full max-w-4xl mx-auto mb-6">
-                  <div className="flex-shrink-0 mt-1">
-                    <div className="h-8 w-8 rounded-lg bg-stone-900 flex items-center justify-center text-white">
-                      <Sparkles className="h-4 w-4" />
-                    </div>
-                  </div>
-                  <div className="bg-white border border-slate-200 shadow-sm px-5 py-4 rounded-2xl rounded-tl-sm flex items-center gap-2">
-                    <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                  </div>
-                </motion.div>
-              )}
-              <div ref={messagesEndRef} />
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Active PDF banner */}
-        {pdfLoaded && pdfName && (
-          <div className="w-full max-w-4xl mb-2 flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700">
-            <FileText className="h-4 w-4 flex-shrink-0" />
-            <span className="flex-1 truncate">Chatting with: <strong>{pdfName}</strong></span>
-            <button
-              onClick={handleClearPdf}
-              title="Remove PDF"
-              className="hover:text-red-500 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-
-        {/* Floating Input Box */}
-        <div className="w-full max-w-4xl shrink-0">
-          <motion.div
-            layout
-            className="w-full bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-300 p-4 transition-all focus-within:shadow-[0_8px_30px_rgb(0,0,0,0.12)] focus-within:border-slate-400"
-          >
-            <form onSubmit={(e) => handleSearch(e)} className="flex flex-col h-full min-h-[140px] relative">
-
-              <textarea
-                className="w-full resize-none border-0 focus:ring-0 text-slate-700 placeholder:text-slate-400 text-base bg-transparent p-2 min-h-[80px]"
-                placeholder={pdfLoaded ? `Ask a question about ${pdfName ?? 'your paper'}…` : "Ask anything about AI, ML, or upload papers/media..."}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSearch();
-                  }
-                }}
-              />
-
-              <div className="flex items-center justify-between mt-auto pt-2">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handlePlusClick}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#F1F5F9] border border-slate-200 rounded-full text-slate-600 text-sm hover:bg-slate-200 transition-colors font-medium"
-                    title="Upload PDF for paper chat"
-                  >
-                    <BookOpen className="h-4 w-4" />
-                    {pdfLoaded ? 'Change PDF' : 'Upload your source'}
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept=".pdf"
-                    onChange={handleFileUpload}
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={!query.trim() || isSearching}
-                    className={clsx(
-                      "h-10 w-10 rounded-full flex items-center justify-center transition-all",
-                      query.trim()
-                        ? "bg-slate-900 text-white hover:bg-slate-800 shadow-md"
-                        : "bg-[#E2E8F0] text-white cursor-not-allowed"
-                    )}
-                  >
-                    {isSearching ? (
-                      <div className="h-4 w-4 border-2 border-slate-400 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <ArrowUp className="h-5 w-5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </motion.div>
+            <input type="file" ref={fileInputRef} className="hidden" accept=".pdf" onChange={handleFileUpload} />
+          </form>
+          <p className="text-[10px] text-center text-slate-400 mt-2 font-medium">Data2Dash can make mistakes. Verify important information.</p>
         </div>
       </div>
     </div>

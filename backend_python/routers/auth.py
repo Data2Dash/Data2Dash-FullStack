@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 import httpx
 
 from database import get_db
-from models import User
+from models import User, Workspace
 from schemas import RegisterRequest, LoginRequest, TokenResponse, UserOut
 from auth_utils import hash_password, verify_password, create_access_token, decode_access_token
 
@@ -21,6 +21,13 @@ FRONTEND_URL         = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
+
+def _ensure_workspace(user: User, db: Session) -> None:
+    """Create a workspace for the user if one doesn't exist yet."""
+    if not db.query(Workspace).filter(Workspace.user_id == user.id).first():
+        ws = Workspace(user_id=user.id, name=f"{user.full_name or user.email}'s Workspace")
+        db.add(ws)
+        db.commit()
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
@@ -52,6 +59,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    _ensure_workspace(user, db)
 
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
@@ -148,6 +156,7 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(user)
+    _ensure_workspace(user, db)
 
     jwt_token = create_access_token({"sub": str(user.id)})
     # Redirect to frontend with token in URL fragment (hash)

@@ -20,6 +20,7 @@ import { StatusBar } from './citation/StatusBar';
 import { ExportMenu } from './citation/ExportMenu';
 import { useDocumentLibrary, DocRecord, StoredCitation } from '../../store/useDocumentLibrary';
 import { useAuthStore, registerBeforeLogout, unregisterBeforeLogout } from '../../store/authStore';
+import { useCitationStore } from '../../store/useCitationStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -158,7 +159,6 @@ export function CitationWorkspace() {
     }
   }, [docs, syncing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Open document from library ───────────────────────────────────────────
   const openDoc = useCallback((doc: DocRecord) => {
     // Save current doc first
     doSave();
@@ -180,6 +180,19 @@ export function CitationWorkspace() {
       }
     }, 50);
   }, [doSave, updateCounts]);
+
+  // ─── Listen for cross-tab requests to open a document ─────────────────────
+  const { pendingOpenDocId, setPendingOpenDocId } = useCitationStore();
+  
+  useEffect(() => {
+    if (pendingOpenDocId) {
+      const targetDoc = docs.find(d => d.id === pendingOpenDocId);
+      if (targetDoc && targetDoc.id !== activeDocId) {
+        openDoc(targetDoc);
+      }
+      setPendingOpenDocId(null);
+    }
+  }, [pendingOpenDocId, docs, activeDocId, openDoc, setPendingOpenDocId]);
 
   // ─── New blank document ───────────────────────────────────────────────────
   const handleNewDoc = () => {
@@ -380,7 +393,7 @@ export function CitationWorkspace() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-0 h-[calc(100vh-3.5rem)] mt-14 bg-stone-50 text-stone-900 flex font-sans selection:bg-sage-100 selection:text-sage-900 overflow-hidden">
+    <div className="h-full w-full bg-stone-50 text-stone-900 flex font-sans selection:bg-sage-100 selection:text-sage-900 overflow-hidden">
 
       {/* Hidden file input for .docx */}
       <input
@@ -391,190 +404,42 @@ export function CitationWorkspace() {
         onChange={handleDocxUpload}
       />
 
-      {/* ── Left Sidebar ── */}
-      <aside className="w-64 border-r border-stone-200 flex flex-col shrink-0 hidden lg:flex bg-white z-10 overflow-hidden">
-
-        {/* Sidebar top actions */}
-        <div className="p-3 border-b border-stone-100 flex flex-col gap-2">
-          {/* New document */}
-          <button
-            onClick={handleNewDoc}
-            className="w-full flex items-center gap-2 px-3 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-bold hover:bg-stone-700 transition-all active:scale-[0.98] shadow-soft"
-          >
-            <Plus className="h-4 w-4" />
-            New Page
-          </button>
-
-          {/* Upload .docx */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full flex items-center gap-2 px-3 py-2 border border-stone-200 text-stone-600 rounded-xl text-sm font-medium hover:bg-stone-50 hover:border-stone-300 transition-all"
-          >
-            <Upload className="h-4 w-4 text-stone-400" />
-            Upload .docx
-          </button>
-        </div>
-
-        {/* Nav tabs */}
-        <div className="flex border-b border-stone-100">
-          <button
-            onClick={() => setSidebarMode('nav')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors ${
-              sidebarMode === 'nav' ? 'text-stone-900 border-b-2 border-stone-900' : 'text-stone-400 hover:text-stone-600'
-            }`}
-          >
-            <Search className="h-3.5 w-3.5" />
-            Navigate
-          </button>
-          <button
-            onClick={() => setSidebarMode('library')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors ${
-              sidebarMode === 'library' ? 'text-stone-900 border-b-2 border-stone-900' : 'text-stone-400 hover:text-stone-600'
-            }`}
-          >
-            <Library className="h-3.5 w-3.5" />
-            Library
-            {docs.length > 0 && (
-              <span className="ml-0.5 text-[9px] bg-sage-100 text-sage-700 px-1.5 py-0.5 rounded-full font-bold">
-                {docs.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* ── NAV MODE ── */}
-        {sidebarMode === 'nav' && (
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
-            <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium bg-stone-900 text-white">
-              <BookMarked className="h-4 w-4" />
-              Citation
-            </div>
-
-            {/* Current doc info */}
-            <div className="mt-4 pt-4 border-t border-stone-100">
-              <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">Current</p>
-              <div className="px-3 py-2 bg-stone-50 rounded-xl">
-                <p className="text-sm font-semibold text-stone-800 truncate">{articleTitle || 'Untitled'}</p>
-                <p className="text-[11px] text-stone-400 mt-0.5">{counts.words} words · {citations.length} citations</p>
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="mt-4 px-3 space-y-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Stats</p>
-              {[
-                { label: 'Words', value: counts.words.toLocaleString() },
-                { label: 'Characters', value: counts.chars.toLocaleString() },
-                { label: 'Citations', value: citations.length.toString() },
-              ].map(({ label, value }) => (
-                <div key={label} className="flex justify-between items-center">
-                  <span className="text-xs text-stone-400 font-medium">{label}</span>
-                  <span className="text-xs text-stone-900 font-bold tabular-nums">{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── LIBRARY MODE ── */}
-        {sidebarMode === 'library' && (
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {docs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
-                <div className="h-12 w-12 bg-stone-100 rounded-2xl flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-stone-300" />
-                </div>
-                <p className="text-sm font-semibold text-stone-500">No saved pages yet</p>
-                <p className="text-xs text-stone-400">Click "New Page" to start writing, or upload a .docx</p>
-              </div>
-            ) : (
-              <div className="p-2">
-                {docs.map((doc) => {
-                  const isActive = doc.id === activeDocId;
-                  return (
-                    <div
-                      key={doc.id}
-                      className={`group relative flex items-start gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-all mb-1 ${
-                        isActive ? 'bg-stone-900 text-white' : 'hover:bg-stone-50 text-stone-700'
-                      }`}
-                      onClick={() => openDoc(doc)}
-                    >
-                      <FileText className={`h-4 w-4 mt-0.5 shrink-0 ${isActive ? 'text-stone-300' : 'text-stone-400'}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-semibold truncate ${isActive ? 'text-white' : 'text-stone-800'}`}>
-                          {doc.title || 'Untitled'}
-                        </p>
-                        <div className={`flex items-center gap-1.5 mt-0.5 text-[10px] ${isActive ? 'text-stone-400' : 'text-stone-400'}`}>
-                          <Clock className="h-2.5 w-2.5" />
-                          {timeSince(doc.updatedAt)}
-                          <span>·</span>
-                          <span>{doc.wordCount} w</span>
-                          {doc.citations.length > 0 && (
-                            <><span>·</span><span>{doc.citations.length} cites</span></>
-                          )}
-                        </div>
-                      </div>
-                      {/* Delete button — visible on hover */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(`Delete "${doc.title}"?`)) {
-                            deleteDoc(doc.id);
-                            if (isActive) {
-                              setActiveDocId(null);
-                              setArticleTitle('My Article');
-                              setCitations([]);
-                              if (editorRef.current) editorRef.current.innerHTML = DEMO_CONTENT;
-                            }
-                          }
-                        }}
-                        className={`opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-50 hover:text-red-500 shrink-0 ${
-                          isActive ? 'text-stone-400' : 'text-stone-300'
-                        }`}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                      <ChevronRight className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${isActive ? 'text-stone-500' : 'text-stone-300'}`} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Sidebar bottom — save now */}
-        <div className="p-3 border-t border-stone-100">
-          <button
-            onClick={doSave}
-            className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-xl transition-all font-medium"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-sage-500" />
-            Save Now
-          </button>
-        </div>
-      </aside>
-
       {/* ── Main column ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden bg-white">
 
         {/* Workspace header bar */}
-        <header className="h-12 border-b border-stone-200 flex items-center justify-between px-4 md:px-6 bg-white/90 backdrop-blur-md z-30 shrink-0 gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <FileText className="h-3.5 w-3.5 text-stone-400 shrink-0" />
-            <input
-              value={articleTitle}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              className="text-sm font-semibold bg-transparent border-none outline-none text-stone-700 truncate max-w-[180px] md:max-w-xs placeholder:text-stone-300"
-              placeholder="Article title…"
-            />
+        <header className="h-14 border-b border-stone-200 flex items-center justify-between px-6 bg-white shrink-0 z-30">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-50 rounded-xl border border-stone-100">
+              <FileText className="h-4 w-4 text-stone-400" />
+              <input
+                value={articleTitle}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                className="bg-transparent border-none focus:ring-0 text-sm font-bold text-stone-900 placeholder:text-stone-300 w-[150px] md:w-[300px]"
+                placeholder="Untitled Article"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-stone-400 uppercase tracking-widest bg-stone-50 px-2 py-1 rounded-lg">
+              <div className={`h-1.5 w-1.5 rounded-full ${syncing ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+              {syncing ? 'Syncing' : 'Saved'}
+            </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+
+          <div className="flex items-center gap-3">
             <StyleSelector active={activeStyle} onChange={handleStyleChange} />
+            <div className="flex bg-stone-100 rounded-xl p-0.5">
+              <button onClick={handleNewDoc} className="px-3 py-1.5 text-xs font-bold text-stone-600 hover:text-stone-900 transition-colors" title="New Page">
+                <Plus className="h-4 w-4" />
+              </button>
+              <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-xs font-bold text-stone-600 hover:text-stone-900 transition-colors border-l border-stone-200" title="Upload .docx">
+                <Upload className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="w-px h-4 bg-stone-200 mx-1" />
             <ExportMenu citations={citations} activeStyle={activeStyle} articleTitle={articleTitle} />
           </div>
         </header>
+
 
         {/* Editor + Source Panel row */}
         <div className="flex-1 flex overflow-hidden relative">

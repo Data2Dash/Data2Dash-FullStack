@@ -16,6 +16,7 @@ export function Navbar() {
   const isActive = (path: string) => location.pathname === path;
 
   const navLinks = [
+    { name: 'Workspace', path: '/workspace' },
     { name: 'Chat', path: '/' },
     { name: 'Search', path: '/search' },
     { name: 'Upload', path: '/upload' },

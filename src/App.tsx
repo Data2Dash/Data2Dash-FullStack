@@ -1,7 +1,6 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Navbar } from './components/layout/Navbar';
-import { Footer } from './components/layout/Footer';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { Sidebar } from './components/layout/Sidebar';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 import { ChatPage } from './pages/ChatPage.tsx';
@@ -11,49 +10,83 @@ import { CitationPage } from './pages/CitationPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
+import { WorkspacePage } from './pages/WorkspacePage';
+
+import { useAuthStore } from './store/authStore';
+import { workspaceApi, WorkspaceSummary } from './api/workspaceApi';
+import { useChatStore } from './store/useChatStore';
+import { useUIStore } from './store/useUIStore';
+import { PanelLeftOpen } from 'lucide-react';
+
+function TabContainer() {
+  const location = useLocation();
+  const path = location.pathname;
+  
+  const { token, isAuthenticated } = useAuthStore();
+  const { sessionId, refreshTrigger } = useChatStore();
+
+  const [summary, setSummary] = useState<WorkspaceSummary | null>(null);
+  const { isSidebarOpen, toggleSidebar } = useUIStore();
+
+  // Global fetch for sidebar data — refetches on route change to stay fresh
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      workspaceApi.getSummary(token)
+        .then(setSummary)
+        .catch(console.error);
+    }
+  }, [isAuthenticated, token, path, sessionId, refreshTrigger]);
+
+  return (
+    <ProtectedRoute>
+      <div className="flex h-screen overflow-hidden bg-stone-50 font-sans text-stone-900 selection:bg-sage-100 selection:text-sage-900">
+        <Sidebar summary={summary} />
+        
+        {/* Main Content Area */}
+        <main className="flex-1 flex flex-col relative h-full overflow-hidden">
+          {/* Floating Toggle Button (visible when sidebar is closed) */}
+          {!isSidebarOpen && (
+            <button
+              onClick={toggleSidebar}
+              className="absolute top-4 left-4 z-[100] p-2 bg-white border border-stone-200 rounded-xl shadow-soft text-stone-400 hover:text-stone-900 transition-all hover:scale-105 active:scale-95"
+              title="Open sidebar"
+            >
+              <PanelLeftOpen className="h-5 w-5" />
+            </button>
+          )}
+
+          <div className={path === '/workspace' ? 'contents' : 'hidden'}>
+            <WorkspacePage summary={summary} />
+          </div>
+          <div className={path === '/' ? 'contents' : 'hidden'}>
+            <ChatPage />
+          </div>
+          <div className={path === '/search' ? 'contents' : 'hidden'}>
+            <SearchPage />
+          </div>
+          <div className={path === '/upload' ? 'contents' : 'hidden'}>
+            <UploadPage />
+          </div>
+          <div className={path === '/citation' ? 'contents' : 'hidden'}>
+            <CitationPage />
+          </div>
+        </main>
+      </div>
+    </ProtectedRoute>
+  );
+}
 
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-stone-50 font-sans text-stone-900 selection:bg-sage-100 selection:text-sage-900 flex flex-col">
-        <Routes>
-          {/* Public auth routes – no Navbar wrapper, no footer */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-          {/* Workspace — has Navbar but no footer */}
-          <Route path="/citation" element={
-            <ProtectedRoute>
-              <>
-                <Navbar />
-                <CitationPage />
-              </>
-            </ProtectedRoute>
-          } />
-
-          {/* Standard routes with Navbar and Footer */}
-          <Route path="*" element={
-            <>
-              <Navbar />
-              <main className="flex-grow">
-                <Routes>
-                  <Route path="/" element={
-                    <ProtectedRoute><ChatPage /></ProtectedRoute>
-                  } />
-                  <Route path="/search" element={
-                    <ProtectedRoute><SearchPage /></ProtectedRoute>
-                  } />
-                  <Route path="/upload" element={
-                    <ProtectedRoute><UploadPage /></ProtectedRoute>
-                  } />
-                </Routes>
-              </main>
-              <Footer />
-            </>
-          } />
-        </Routes>
-      </div>
+        {/* All protected routes are handled by the TabContainer to preserve state */}
+        <Route path="*" element={<TabContainer />} />
+      </Routes>
     </Router>
   );
 }

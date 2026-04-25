@@ -30,3 +30,6 @@ sqlalchemy
 httpx
 python-jose
 bcrypt
+alembic
+python-dotenv
+reportlab

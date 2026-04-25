@@ -109,22 +109,20 @@ CRITICAL RULES:
 
 Begin!"""
 
-    def run(self, query: str, history=None, session_id=None):
+    def run(self, query: str, history=None, session_id=None, pdf_agent_instance=None):
         """Run the chat agent with history and optional session context"""
         history = history or []
         
         # Prepare tools for this specific run
         current_tools = self.base_tools.copy()
         
-        if session_id:
-            # Create a wrapper function that calls PDFAgent for this session
-            from agents.pdf_agent import PDFAgent
-            import os
+        if session_id and pdf_agent_instance is not None:
+            # Use the GLOBAL pdf_agent singleton so it has access to already-loaded sessions
+            _pdf_agent = pdf_agent_instance
+            _sid = session_id
             
             def run_document_reader(q: str) -> str:
-                 groq_api_key = os.getenv("GROQ_API_KEY")
-                 temp_pdf_agent = PDFAgent(groq_api_key=groq_api_key)
-                 result = temp_pdf_agent.get_response(q, session_id)
+                 result = _pdf_agent.get_response(q, _sid)
                  # get_response now returns a structured dict — convert to readable string
                  if isinstance(result, dict):
                      parts = []
@@ -229,7 +227,7 @@ Begin!"""
                             messages.append(AIMessage(content=response_text))
                             messages.append(HumanMessage(content=f"{error_msg}\n\nPlease try a different tool or search query."))
                     else:
-                        error_msg = f"Unknown tool: {tool_name}. Must be exactly one of: {', '.join(self.tools.keys())}"
+                        error_msg = f"Unknown tool: {tool_name}. Must be exactly one of: {', '.join(current_tools.keys())}"
                         messages.append(AIMessage(content=response_text))
                         messages.append(HumanMessage(content=error_msg))
             
