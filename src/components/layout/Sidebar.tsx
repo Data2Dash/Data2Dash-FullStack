@@ -13,7 +13,10 @@ import { useCitationStore } from '../../store/useCitationStore';
 import { useChatStore } from '../../store/useChatStore';
 import { useUIStore } from '../../store/useUIStore';
 import { useSearchStore } from '../../store/useSearchStore';
+import { usePdfStore } from '../../store/usePdfStore';
 import { PanelLeftClose } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface SidebarProps {
   summary: WorkspaceSummary | null;
@@ -26,6 +29,7 @@ export function Sidebar({ summary }: SidebarProps) {
   const { sessionId, setMessages, setSessionId, resetChat } = useChatStore();
   const { isSidebarOpen, toggleSidebar } = useUIStore();
   const { sessions: searchSessions, activeSessionId: activeSearchId, newSearch, loadSession } = useSearchStore();
+  const pdfStore = usePdfStore();
   
   const location = useLocation();
   const navigate = useNavigate();
@@ -129,17 +133,130 @@ export function Sidebar({ summary }: SidebarProps) {
     }
 
     if (path === '/upload') {
+      // Extract session_id from storage_path: "data/uploads/{session_id}/{filename}" or "data\uploads\{sid}\{fname}"
+      const handleFileRestore = async (file: typeof summary.recent_files[0]) => {
+        const parts = file.storage_path.replace(/\\/g, '/').split('/');
+        // Find the segment after "uploads"
+        const uploadsIdx = parts.findIndex(p => p === 'uploads');
+        const sid = uploadsIdx >= 0 && parts.length > uploadsIdx + 1 ? parts[uploadsIdx + 1] : null;
+        if (!sid) return;
+
+        const url = `${API_URL}/api/uploads/${sid}/${file.filename}`;
+        const sizeStr = `${(file.size_bytes / 1024 / 1024).toFixed(1)} MB`;
+
+        // Restore the session in the PDF store
+        pdfStore.restoreSession(
+          [{ id: `${file.filename}_restored`, name: file.original_name, size: sizeStr, status: 'ready', url, sessionId: sid }],
+          `${file.filename}_restored`,
+        );
+
+        // Load any previous chat messages for this session from the DB
+        if (token) {
+          try {
+            // Find a PDF session matching this session_id
+            const pdfSessions = summary?.recent_sessions?.filter(s => s.session_type === 'pdf') || [];
+            for (const sess of pdfSessions) {
+              if (sess.session_id === sid) {
+                const data = await workspaceApi.getSessionMessages(sess.session_id, token);
+                const mapped = (data.messages || []).map((m: any) => ({
+                  role: m.role as 'user' | 'ai',
+                  content: m.content ?? '',
+                }));
+                pdfStore.setChatMessages(mapped);
+                break;
+              }
+            }
+          } catch (err) {
+            console.error('Failed to load PDF session messages:', err);
+          }
+        }
+
+        if (path !== '/upload') navigate('/upload');
+      };
+
+      // Handle clicking a PDF chat session
+      const handlePdfSessionClick = async (sess: typeof summary.recent_sessions[0]) => {
+        if (!token) return;
+        try {
+          const data = await workspaceApi.getSessionMessages(sess.session_id, token);
+          const mapped = (data.messages || []).map((m: any) => ({
+            role: m.role as 'user' | 'ai',
+            content: m.content ?? '',
+          }));
+
+          // Find the file for this session from the files list
+          const matchingFile = summary?.recent_files?.find(f => {
+            const parts = f.storage_path.replace(/\\/g, '/').split('/');
+            const uploadsIdx = parts.findIndex(p => p === 'uploads');
+            const sid = uploadsIdx >= 0 && parts.length > uploadsIdx + 1 ? parts[uploadsIdx + 1] : null;
+            return sid === sess.session_id;
+          });
+
+          if (matchingFile) {
+            const sid = sess.session_id;
+            const url = `${API_URL}/api/uploads/${sid}/${matchingFile.filename}`;
+            const sizeStr = `${(matchingFile.size_bytes / 1024 / 1024).toFixed(1)} MB`;
+            pdfStore.restoreSession(
+              [{ id: `${matchingFile.filename}_restored`, name: matchingFile.original_name, size: sizeStr, status: 'ready', url, sessionId: sid }],
+              `${matchingFile.filename}_restored`,
+            );
+          } else {
+            // No file match — just set the session and messages
+            pdfStore.restoreSession([], null);
+          }
+          pdfStore.setChatMessages(mapped);
+
+          if (path !== '/upload') navigate('/upload');
+        } catch (err) {
+          console.error('Failed to load PDF session:', err);
+        }
+      };
+
+      const pdfSessions = summary?.recent_sessions?.filter(s => s.session_type === 'pdf') || [];
+
       return (
         <>
+          {/* Recent uploaded files */}
           <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Recent Uploads</p>
           <div className="space-y-1">
-            {summary?.recent_files?.map(f => (
-              <button key={f.file_id} className="w-full text-left px-3 py-2 rounded-xl hover:bg-stone-100 text-sm font-medium text-stone-600 hover:text-stone-900 truncate flex items-center gap-2 transition-colors">
-                <FileText className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-                <span className="truncate">{f.original_name}</span>
-              </button>
-            )) || <p className="text-xs text-stone-400 px-3">No files uploaded.</p>}
+            {summary?.recent_files?.length
+              ? summary.recent_files.map(f => (
+                <button
+                  key={f.file_id}
+                  onClick={() => handleFileRestore(f)}
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-stone-100 text-sm font-medium text-stone-600 hover:text-stone-900 truncate flex items-center gap-2 transition-colors"
+                >
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                  <span className="truncate">{f.original_name}</span>
+                </button>
+              ))
+              : <p className="text-xs text-stone-400 px-3">No files uploaded.</p>
+            }
           </div>
+
+          {/* PDF chat sessions */}
+          {pdfSessions.length > 0 && (
+            <>
+              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 mt-5 px-1">PDF Chats</p>
+              <div className="space-y-1">
+                {pdfSessions.map(s => (
+                  <button
+                    key={s.session_id}
+                    onClick={() => handlePdfSessionClick(s)}
+                    className={clsx(
+                      "w-full text-left px-3 py-2 rounded-xl text-sm font-medium truncate flex items-center gap-2 transition-colors",
+                      pdfStore.sessionId === s.session_id
+                        ? "bg-stone-900 text-white shadow-soft"
+                        : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
+                    )}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                    <span className="truncate">{s.title}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </>
       );
     }
@@ -185,7 +302,7 @@ export function Sidebar({ summary }: SidebarProps) {
       target = "/search";
       action = () => newSearch();
     }
-    else if (path === '/upload') { text = "Upload File"; target = "/upload"; icon = <Upload className="h-4 w-4" />; }
+    else if (path === '/upload') { text = "Upload File"; target = "/upload"; icon = <Upload className="h-4 w-4" />; action = () => pdfStore.newSession(); }
     else if (path === '/citation' || path === '/workspace') { text = "New Document"; target = "/citation"; }
 
     return (

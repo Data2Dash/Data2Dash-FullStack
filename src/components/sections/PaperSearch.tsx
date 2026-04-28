@@ -27,6 +27,7 @@ interface RichPaper {
   published_date: string;
   source: string;
   url: string;
+  pdf_url: string | null;
   arxiv_id: string | null;
   openalex_work_id: string | null;
   citations: number;
@@ -722,6 +723,7 @@ interface PaperDetailModalProps {
   isImporting: boolean;
   onClose: () => void;
   onSendMessage: (message: string) => Promise<{ response: string; sources?: any[] }>;
+  availableFilesToCompare?: { id: string; name: string; sessionId: string; url?: string }[];
 }
 
 function PaperDetailModal({
@@ -732,6 +734,7 @@ function PaperDetailModal({
   isImporting,
   onClose,
   onSendMessage,
+  availableFilesToCompare,
 }: PaperDetailModalProps) {
   // Close on Escape
   useEffect(() => {
@@ -891,6 +894,8 @@ function PaperDetailModal({
             pdfUrl={pdfUrl}
             pdfSize={pdfSize}
             isImporting={isImporting}
+            alwaysShowCompare={true}
+            availableFilesToCompare={availableFilesToCompare}
             initialMessage={
               isImporting ? (
                 <div className="flex items-center gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
@@ -1044,7 +1049,7 @@ export function PaperSearch() {
       const res = await fetch(`${API_URL}/api/pdf/import`, {
         method: 'POST',
         headers: importHeaders,
-        body: JSON.stringify({ paper_id: paperId, session_id: paperSessionId.current, title: paper.title }),
+        body: JSON.stringify({ paper_id: paperId, session_id: paperSessionId.current, title: paper.title, pdf_url: paper.pdf_url || undefined }),
       });
       const data = await res.json();
       if (data.filename) setPdfFileName(data.filename);
@@ -1362,9 +1367,16 @@ export function PaperSearch() {
             pdfSize={pdfSize}
             isImporting={isImporting}
             onClose={() => setSelectedPaper(null)}
+            availableFilesToCompare={rankedFull.map(p => ({
+              id: p.arxiv_id || p.id,
+              name: p.title,
+              sessionId: '',
+              url: p.url
+            }))}
             onSendMessage={async (message) => {
               const sid = paperSessionId.current;
               if (pdfFileName) {
+                // PDF is fully indexed — answer ONLY from document content
                 const resp = await fetch(`${API_URL}/api/pdf/chat`, {
                   method: 'POST',
                   headers: {
@@ -1390,25 +1402,24 @@ export function PaperSearch() {
                   const content = tb.markdown || tb.raw_text || '';
                   if (content) parts.push(`**📊 ${label}${caption}**\n\n${content}`);
                 }
-                return { response: parts.join('\n\n') || 'The document was processed but no relevant content was found for this query. Try rephrasing your question.' };
+                return {
+                  response: parts.join('\n\n') ||
+                    'No relevant content found in the document for this query. Try rephrasing your question.',
+                };
               }
-              const abstractSnippet = (selectedPaper.abstract || '').slice(0, 600);
-              const systemContext =
-                `You are analysing a research paper titled "${selectedPaper.title}" ` +
-                `by ${selectedPaper.authors}. ` +
-                `Abstract: ${abstractSnippet}. ` +
-                `Answer based on this context and your knowledge. ` +
-                `Note: the full PDF is still being processed — for table/figure extraction ask again in a moment.`;
-              const resp = await fetch(`${API_URL}/api/chat/ai`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ query: message, history: [{ role: 'system', content: systemContext }], session_id: sid }),
-              });
-              const data = await resp.json();
-              return { response: data.response ?? data.answer ?? 'No response.' };
+              // PDF not yet indexed — refuse to answer from memory/general knowledge
+              if (isImporting) {
+                return {
+                  response:
+                    '⏳ **PDF is still being downloaded and indexed.** Please wait a moment, then ask your question again — I will answer only from the full document content to ensure accuracy.',
+                };
+              }
+              return {
+                response:
+                  '⚠️ **The full PDF could not be indexed** (it may be behind a paywall or unavailable). ' +
+                  'I can only answer from indexed document content to avoid inaccurate responses. ' +
+                  'You can read the abstract in the left panel, or try opening the paper directly.',
+              };
             }}
           />
         )}

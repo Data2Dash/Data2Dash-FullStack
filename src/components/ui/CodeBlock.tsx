@@ -12,36 +12,26 @@ import React, { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Check, Copy } from 'lucide-react';
+import { clsx } from 'clsx';
 
 interface CodeProps {
-  inline?: boolean;
   className?: string;
   children?: React.ReactNode;
 }
 
-function CodeBlock({ inline, className, children }: CodeProps) {
+function CodeBlock({ className, children }: CodeProps) {
   const [copied, setCopied] = useState(false);
 
   const match = /language-(\w+)/.exec(className || '');
+  const isInline = !match;
   const language = match ? match[1] : '';
   const code = String(children ?? '').replace(/\n$/, '');
-  const isMultiLine = code.includes('\n') || code.length > 80;
 
   // ── Inline code  `like this` ──────────────────────────────────────────────
-  if (inline) {
+  if (isInline) {
     return (
-      <code className="px-1.5 py-0.5 rounded-md bg-stone-800 text-emerald-300 font-mono text-[0.82em] font-medium">
+      <code className="px-1.5 py-0.5 mx-0.5 rounded-md bg-stone-100 text-stone-800 border border-stone-200 font-mono text-[0.85em] font-semibold break-words">
         {children}
-      </code>
-    );
-  }
-
-  // ── Single-line fenced block  ```just one line``` ─────────────────────────
-  // Render as a compact pill so random keyword fragments don't become panels.
-  if (!isMultiLine) {
-    return (
-      <code className="inline-block my-1 px-3 py-1 rounded-lg bg-stone-800 text-emerald-300 font-mono text-[0.82em] font-medium border border-stone-700">
-        {code}
       </code>
     );
   }
@@ -55,48 +45,47 @@ function CodeBlock({ inline, className, children }: CodeProps) {
   };
 
   return (
-    <div className="my-3 rounded-xl overflow-hidden border border-stone-700 shadow-md">
+    <div className="my-4 rounded-xl overflow-hidden border border-stone-700 shadow-lg bg-[#1e1e1e]">
       {/* Header bar */}
-      <div className="flex items-center justify-between px-4 py-1.5 bg-stone-800 border-b border-stone-700">
-        <span className="text-[11px] font-mono font-semibold text-stone-400 uppercase tracking-widest">
-          {language || 'code'}
+      <div className="flex items-center justify-between px-4 py-2 bg-stone-800/80 border-b border-stone-700">
+        <span className="text-[11px] font-mono font-bold text-stone-300 uppercase tracking-widest">
+          {language || 'text'}
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-white transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium text-stone-300 hover:text-white hover:bg-stone-700 transition-colors"
           title="Copy code"
         >
           {copied ? (
             <><Check className="h-3.5 w-3.5 text-emerald-400" /><span className="text-emerald-400">Copied</span></>
           ) : (
-            <><Copy className="h-3.5 w-3.5" /><span>Copy</span></>
+            <><Copy className="h-3.5 w-3.5" /><span>Copy code</span></>
           )}
         </button>
       </div>
 
       {/* Code body */}
-      <SyntaxHighlighter
-        language={language || 'text'}
-        style={vscDarkPlus}
-        showLineNumbers={code.split('\n').length > 3}
-        wrapLines
-        customStyle={{
-          margin: 0,
-          borderRadius: 0,
-          fontSize: '0.8rem',
-          lineHeight: '1.6',
-          padding: '1rem',
-          background: '#1e1e1e',
-        }}
-        lineNumberStyle={{
-          minWidth: '2.5em',
-          paddingRight: '1em',
-          color: '#555',
-          userSelect: 'none',
-        }}
-      >
-        {code}
-      </SyntaxHighlighter>
+      <div className="overflow-x-auto text-[13px] sm:text-sm custom-scrollbar">
+        <SyntaxHighlighter
+          language={language || 'text'}
+          style={vscDarkPlus}
+          showLineNumbers={code.split('\n').length > 1}
+          customStyle={{
+            margin: 0,
+            padding: '1rem',
+            background: 'transparent',
+            minWidth: '100%',
+          }}
+          lineNumberStyle={{
+            minWidth: '2.5em',
+            paddingRight: '1em',
+            color: '#6e7681',
+            userSelect: 'none',
+          }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
     </div>
   );
 }
@@ -105,4 +94,28 @@ function CodeBlock({ inline, className, children }: CodeProps) {
 export const codeComponents = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   code: (props: any) => <CodeBlock {...props} />,
+  // Enhanced Blockquote
+  blockquote: (props: any) => (
+    <blockquote className="border-l-4 border-stone-300 pl-4 py-1 my-4 bg-stone-50/80 rounded-r-lg italic text-stone-600" {...props} />
+  ),
+  // Enhanced Table Wrapper for responsiveness
+  table: (props: any) => (
+    <div className="overflow-x-auto w-full my-4 rounded-xl border border-stone-200 shadow-sm custom-scrollbar bg-white">
+      <table className="w-full text-left text-[13px] sm:text-sm border-collapse whitespace-nowrap" {...props} />
+    </div>
+  ),
+  thead: (props: any) => <thead className="bg-stone-100/80 text-stone-700" {...props} />,
+  th: (props: any) => <th className="px-4 py-2.5 font-semibold border-b border-stone-200" {...props} />,
+  td: (props: any) => <td className="px-4 py-2.5 border-b border-stone-100 text-stone-600 last:border-b-0" {...props} />,
+  // Math blocks wrapper to prevent overflow
+  div: (props: any) => {
+    if (props.className && props.className.includes('math-display')) {
+      return (
+        <div className="overflow-x-auto custom-scrollbar py-2 my-2 w-full text-center">
+          <div {...props} />
+        </div>
+      );
+    }
+    return <div {...props} />;
+  }
 };

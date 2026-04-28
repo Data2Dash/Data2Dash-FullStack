@@ -60,6 +60,7 @@ class EnhancedRAGSystem:
                 "debug": self.config.debug,
                 "chunk_size": self.config.chunk_size,
                 "chunk_overlap": self.config.chunk_overlap,
+                "groq_api_key": self.groq_api_key,
             }
         )
         self.chunker = SpecializedChunker()

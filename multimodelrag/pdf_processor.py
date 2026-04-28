@@ -264,7 +264,46 @@ class TableDetector:
         return "```text\n" + "\n".join(lines) + "\n```"
 
     @staticmethod
-    def extract_table_markdown(plumber_page, fitz_page) -> List[Dict[str, Any]]:
+    def _extract_table_with_vision(fitz_page, crop_box, api_key: str) -> str:
+        try:
+            from groq import Groq
+            import base64
+            import fitz
+            
+            client = Groq(api_key=api_key)
+            
+            # Crop image
+            pix = fitz_page.get_pixmap(clip=fitz.Rect(crop_box), dpi=150)
+            img_data = pix.tobytes("png")
+            b64_img = base64.b64encode(img_data).decode('utf-8')
+            
+            prompt = "Extract the following table from a research paper into a perfect Markdown table. If there are any mathematical equations or formulas, use standard LaTeX ($...$ or $$...$$). Do not output any conversational text, ONLY the markdown table."
+            
+            completion = client.chat.completions.create(
+                model="llama-3.2-11b-vision-preview",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{b64_img}"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                temperature=0.0
+            )
+            return completion.choices[0].message.content.strip()
+        except Exception as e:
+            logger.debug(f"Vision table extraction failed: {e}")
+            return ""
+
+    @staticmethod
+    def extract_table_markdown(plumber_page, fitz_page, config: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         tables = []
         try:
             table_captions = []
@@ -311,7 +350,10 @@ class TableDetector:
                 md_text = ""
                 crop_box = (crop_x0, max(0, cy1 - 2), crop_x1, min(page_height, cy1 + 350))
 
-                if matched_native is not None:
+                if config and config.get("groq_api_key"):
+                    md_text = TableDetector._extract_table_with_vision(fitz_page, crop_box, config.get("groq_api_key"))
+
+                if not md_text and matched_native is not None:
                     try:
                         rows = matched_native.extract()
                         md_body = TableDetector._cells_to_markdown(rows)
@@ -537,7 +579,7 @@ class PDFProcessorV2:
             page = doc[page_num]
             plumber_page = plumber_doc.pages[page_num]
 
-            page_tables = self.tbl_det.extract_table_markdown(plumber_page, page)
+            page_tables = self.tbl_det.extract_table_markdown(plumber_page, page, self.config)
             for pt in page_tables:
                 self.tbl_counter += 1
                 tbl = ExtractedTable(

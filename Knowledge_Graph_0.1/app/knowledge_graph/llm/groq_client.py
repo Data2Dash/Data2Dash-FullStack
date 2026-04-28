@@ -17,4 +17,5 @@ def build_llm(cfg: PipelineConfig) -> ChatGroq:
         api_key=api_key,
         temperature=cfg.temperature,
         model_name=cfg.model_name,
+        max_retries=cfg.max_retries,
     )

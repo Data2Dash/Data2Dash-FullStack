@@ -8,18 +8,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { clsx } from 'clsx';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/useChatStore';
+import { usePdfStore, PdfFile } from '../../store/usePdfStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const SPLIT_KEY = 'data2dash-pdf-split';
 const DEFAULT_CHAT_PCT = 42;
-
-interface UploadedFile {
-  id: string;
-  name: string;
-  size: string;
-  status: 'uploading' | 'ready' | 'error';
-  url?: string;
-}
 
 // ─── Drag-to-resize hook ──────────────────────────────────────────────────────
 function useResizableSplit(defaultPct: number, storageKey: string) {
@@ -74,7 +67,7 @@ function FileTabBar({
   onRemove,
   onUpload,
 }: {
-  files: UploadedFile[];
+  files: PdfFile[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
@@ -170,7 +163,7 @@ function FileTabBar({
 }
 
 // ─── PDF Viewer Panel ─────────────────────────────────────────────────────────
-function PdfViewer({ file }: { file: UploadedFile | null }) {
+function PdfViewer({ file }: { file: PdfFile | null }) {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-stone-100 overflow-hidden">
       {file?.url ? (
@@ -216,37 +209,67 @@ function PdfViewer({ file }: { file: UploadedFile | null }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function PdfAnalysis() {
-  const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [activeFileId, setActiveFileId] = useState<string | null>(null);
-  // Use a proper UUID — the backend validates with uuid.UUID() and rejects non-UUID strings
-  const [sessionId] = useState(() =>
-    typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
-  );
+  const {
+    files, activeFileId, reindexedSessions,
+    addFile, updateFile, removeFile, setActiveFileId,
+    markReindexed, addChatMessage, chatMessages, setChatMessagesForFile,
+  } = usePdfStore();
+
+  const [reindexing, setReindexing] = useState(false);
+
   const { token } = useAuthStore();
   const { triggerRefresh } = useChatStore();
   const { chatPct, containerRef, onMouseDown } = useResizableSplit(DEFAULT_CHAT_PCT, SPLIT_KEY);
 
   const currentFile = files.find(f => f.id === activeFileId) ?? null;
 
+  // ── Auto-reindex persisted files on mount / page refresh ──────────────────
+  useEffect(() => {
+    if (files.length === 0) return;
+    const filesToReindex = files.filter(f => f.status === 'ready' && f.url && !reindexedSessions.includes(f.sessionId));
+    if (filesToReindex.length === 0) return;
+
+    // Re-index ALL unindexed ready files so the agent can chat with them
+    const doReindex = async () => {
+      setReindexing(true);
+      for (const file of filesToReindex) {
+        try {
+          await fetch(`${API_URL}/api/pdf/reindex`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: file.sessionId, filename: file.name }),
+          });
+          markReindexed(file.sessionId);
+        } catch (err) {
+          console.warn('Reindex failed for', file.name, err);
+        }
+      }
+      setReindexing(false);
+    };
+    doReindex();
+  }, [files, reindexedSessions, markReindexed]);
+
   const processFiles = useCallback(async (fileList: FileList | File[]) => {
     const arr = Array.from(fileList);
-    const newEntries: UploadedFile[] = arr.map(f => ({
+    const newEntries: PdfFile[] = arr.map(f => ({
       id: `${f.name}_${Date.now()}`,
       name: f.name,
       size: (f.size / (1024 * 1024)).toFixed(1) + ' MB',
-      status: 'uploading',
+      status: 'uploading' as const,
+      sessionId: crypto.randomUUID()
     }));
 
-    setFiles(prev => [...prev, ...newEntries]);
+    // Add to store immediately
+    for (const entry of newEntries) {
+      addFile(entry);
+    }
 
     for (let i = 0; i < arr.length; i++) {
       const file = arr[i];
       const entry = newEntries[i];
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('session_id', sessionId);
+      formData.append('session_id', entry.sessionId);
 
       try {
         // Include auth token so the backend saves the file to the user's workspace
@@ -258,29 +281,23 @@ export function PdfAnalysis() {
           body: formData,
         });
         const data = await res.json();
-        setFiles(prev =>
-          prev.map(f => f.id === entry.id ? { ...f, status: 'ready', url: data.url } : f)
-        );
-        setActiveFileId(prev => prev ?? entry.id);
+        updateFile(entry.id, { status: 'ready', url: data.url });
+        // Auto-select the first file if none is active
+        if (!activeFileId) {
+          setActiveFileId(entry.id);
+        }
+        markReindexed(entry.sessionId); // Just uploaded = already indexed
         // Refresh the workspace sidebar so the new file appears immediately
         triggerRefresh();
       } catch {
-        setFiles(prev =>
-          prev.map(f => f.id === entry.id ? { ...f, status: 'error' } : f)
-        );
+        updateFile(entry.id, { status: 'error' });
       }
     }
-  }, [sessionId]);
+  }, [token, activeFileId, addFile, updateFile, setActiveFileId, markReindexed, triggerRefresh]);
 
-  const removeFile = useCallback((id: string) => {
-    setFiles(prev => {
-      const next = prev.filter(f => f.id !== id);
-      if (activeFileId === id) {
-        setActiveFileId(next.length > 0 ? next[next.length - 1].id : null);
-      }
-      return next;
-    });
-  }, [activeFileId]);
+  const handleRemoveFile = useCallback((id: string) => {
+    removeFile(id);
+  }, [removeFile]);
 
   // ── Empty state ──────────────────────────────────────────────────────────────
   if (files.length === 0) {
@@ -296,9 +313,17 @@ export function PdfAnalysis() {
         files={files}
         activeId={activeFileId}
         onSelect={setActiveFileId}
-        onRemove={removeFile}
+        onRemove={handleRemoveFile}
         onUpload={processFiles}
       />
+
+      {/* Re-indexing banner */}
+      {reindexing && (
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs font-semibold">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Re-indexing documents for chat…
+        </div>
+      )}
 
       {/* ── Main split: PDF | Chat ──────────────────────────────────────────── */}
       <div ref={containerRef} className="flex flex-1 overflow-hidden">
@@ -330,9 +355,11 @@ export function PdfAnalysis() {
                 ? `${currentFile.size} · ready`
                 : 'Upload a PDF to start'
             }
-            sessionId={sessionId}
+            sessionId={currentFile?.sessionId ?? 'default'}
             fileName={currentFile?.status === 'ready' ? currentFile.name : null}
             pdfUrl={currentFile?.url}
+            chatHistory={currentFile ? chatMessages[currentFile.id] : undefined}
+            availableFilesToCompare={files.map(f => ({ id: f.id, name: f.name, sessionId: f.sessionId }))}
             initialMessage={
               currentFile ? (
                 currentFile.status === 'uploading' ? (
@@ -360,12 +387,13 @@ export function PdfAnalysis() {
               )
             }
             onSendMessage={async (message) => {
+              if (!currentFile) return { response: '⚠️ No document selected.' };
               const headers: Record<string, string> = { 'Content-Type': 'application/json' };
               if (token) headers['Authorization'] = `Bearer ${token}`;
               const res = await fetch(`${API_URL}/api/pdf/chat`, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify({ query: message, session_id: sessionId }),
+                body: JSON.stringify({ query: message, session_id: currentFile.sessionId }),
               });
               if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
@@ -379,7 +407,11 @@ export function PdfAnalysis() {
               if (!data.answer && !data.response) {
                 return { response: '⚠️ No PDF uploaded yet or the document has not been indexed. Please wait a moment and try again.' };
               }
-              return { response: data.answer || data.response || '', sources: data.sources };
+              const response = data.answer || data.response || '';
+              // Persist chat messages to the store for this specific file
+              addChatMessage(currentFile.id, { role: 'user', content: message });
+              addChatMessage(currentFile.id, { role: 'ai', content: response });
+              return { response, sources: data.sources };
             }}
           />
         </div>

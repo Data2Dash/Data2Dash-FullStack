@@ -11,7 +11,9 @@ import { useDocumentLibrary } from '../store/useDocumentLibrary';
 import { useCitationStore } from '../store/useCitationStore';
 import { useSearchStore } from '../store/useSearchStore';
 import { useChatStore } from '../store/useChatStore';
+import { usePdfStore } from '../store/usePdfStore';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 interface WorkspaceProps {
   summary: WorkspaceSummary | null;
 }
@@ -23,6 +25,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
   const setPendingOpenDocId = useCitationStore(s => s.setPendingOpenDocId);
   const { sessions: searchSessions, loadSession } = useSearchStore();
   const { setSessionId, setMessages } = useChatStore();
+  const pdfStore = usePdfStore();
 
   const loading = !summary;
 
@@ -30,21 +33,61 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
     ? user.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
     : user?.email?.slice(0, 2).toUpperCase() ?? '??';
 
-  const handleSessionClick = async (sid: string) => {
+  const handleSessionClick = async (sid: string, sessionType?: string) => {
     if (!token) return;
     try {
       const data = await workspaceApi.getSessionMessages(sid, token);
-      setSessionId(sid);
       const mapped = (data.messages || []).map((m: any) => ({
         role: m.role as 'user' | 'ai',
         content: m.content ?? '',
         sources: m.sources ?? undefined,
       }));
-      setMessages(mapped);
-      navigate('/');
+
+      // Route PDF sessions to /upload with proper state restoration
+      if (sessionType === 'pdf') {
+        // Find a matching file for this session
+        const matchingFile = summary?.recent_files?.find(f => {
+          const parts = f.storage_path.replace(/\\/g, '/').split('/');
+          const uploadsIdx = parts.findIndex((p: string) => p === 'uploads');
+          const fileSid = uploadsIdx >= 0 && parts.length > uploadsIdx + 1 ? parts[uploadsIdx + 1] : null;
+          return fileSid === sid;
+        });
+
+        if (matchingFile) {
+          const url = `${API_URL}/api/uploads/${sid}/${matchingFile.filename}`;
+          const sizeStr = `${(matchingFile.size_bytes / 1024 / 1024).toFixed(1)} MB`;
+          pdfStore.restoreSession(
+            [{ id: `${matchingFile.filename}_restored`, name: matchingFile.original_name, size: sizeStr, status: 'ready', url, sessionId: sid }],
+            `${matchingFile.filename}_restored`,
+          );
+          pdfStore.setChatMessagesForFile(`${matchingFile.filename}_restored`, mapped);
+        } else {
+          pdfStore.restoreSession([], null);
+        }
+        navigate('/upload');
+      } else {
+        // AI/general sessions go to chat page
+        setSessionId(sid);
+        setMessages(mapped);
+        navigate('/');
+      }
     } catch (err) {
       console.error('Failed to load session:', err);
     }
+  };
+
+  const handleFileClick = (f: typeof summary.recent_files[0]) => {
+    const parts = f.storage_path.replace(/\\/g, '/').split('/');
+    const uploadsIdx = parts.findIndex((p: string) => p === 'uploads');
+    const sid = uploadsIdx >= 0 && parts.length > uploadsIdx + 1 ? parts[uploadsIdx + 1] : null;
+    if (!sid) return;
+    const url = `${API_URL}/api/uploads/${sid}/${f.filename}`;
+    const sizeStr = `${(f.size_bytes / 1024 / 1024).toFixed(1)} MB`;
+    pdfStore.restoreSession(
+      [{ id: `${f.filename}_restored`, name: f.original_name, size: sizeStr, status: 'ready', url, sessionId: sid }],
+      `${f.filename}_restored`,
+    );
+    navigate('/upload');
   };
 
   if (loading) {
@@ -145,7 +188,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
             ) : (
               <div className="space-y-3">
                 {summary?.recent_files.map(f => (
-                  <div key={f.file_id} className="group flex items-center justify-between p-4 rounded-2xl hover:bg-stone-50 border border-transparent hover:border-stone-100 transition-all cursor-pointer">
+                  <div key={f.file_id} onClick={() => handleFileClick(f)} className="group flex items-center justify-between p-4 rounded-2xl hover:bg-stone-50 border border-transparent hover:border-stone-100 transition-all cursor-pointer">
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="h-8 w-8 rounded-lg bg-stone-100 flex items-center justify-center shrink-0">
                         <FileText className="h-4 w-4 text-stone-400 group-hover:text-stone-600 transition-colors" />
@@ -190,7 +233,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
               ) : (
                 <div className="space-y-4">
                   {summary?.recent_sessions.map(s => (
-                    <div key={s.session_id} onClick={() => handleSessionClick(s.session_id)} className="group cursor-pointer">
+                    <div key={s.session_id} onClick={() => handleSessionClick(s.session_id, s.session_type)} className="group cursor-pointer">
                       <p className="text-sm font-semibold text-stone-800 group-hover:text-emerald-600 transition-colors truncate mb-1">
                         {s.title}
                       </p>

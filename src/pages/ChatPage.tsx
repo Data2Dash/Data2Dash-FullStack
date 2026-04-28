@@ -26,7 +26,7 @@ function EquationBlock({ eq }: { eq: any }) {
         📐 {label}{eq.page_number != null ? ` · Page ${eq.page_number}` : ''}
       </p>
       {latex ? (
-        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]} components={codeComponents}>
           {`$$\n${latex}\n$$`}
         </ReactMarkdown>
       ) : raw ? (
@@ -49,7 +49,7 @@ function TableBlock({ tb }: { tb: any }) {
       </p>
       {md ? (
         <div className="prose prose-sm max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={codeComponents}>
             {md}
           </ReactMarkdown>
         </div>

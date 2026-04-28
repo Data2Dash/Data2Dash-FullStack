@@ -22,11 +22,13 @@ CRITICAL ANSWER RULES:
 5. NEVER say "not found" if the element exists in the context
 6. ALWAYS check the context carefully before claiming something is missing
 
-FORMATTING RULES:
-- Equations: Display LaTeX in $$...$$ format with brief 1-line description
-- Tables: Show complete markdown table with caption
-- Figures: Describe visual content with page reference
-- Text answers: Direct, concise, 2-3 sentences maximum
+FORMATTING RULES (MUST FOLLOW):
+- Codes/Scripts: Use standard markdown code blocks (```language ... ```) to extract and format code perfectly.
+- Equations: Display LaTeX in block format ($$...$$) with a brief 1-line description. Use $...$ for inline math.
+- Tables: Show complete and perfectly aligned markdown tables with captions.
+- Emphasis: ALWAYS use **bold font** for titles, headings, and important keywords to make them stand out.
+- Lists: Whenever there are multiple points, features, or steps in your response, ALWAYS use a bullet point list.
+- Text answers: Direct, concise, structured, and easy to read.
 
 VERIFICATION CHECKLIST:
 ☑ Did I check if the requested element is in the context?
@@ -97,17 +99,20 @@ EXPLAIN_ELEMENT_PROMPT = """EXPLAIN ELEMENT REQUEST
 You are asked to explain an element in detail.
 
 INSTRUCTIONS:
-1. Show the element (LaTeX/markdown)
-2. Explain each component
-3. Describe the mathematical/logical relationship
-4. Provide context from document
-5. Cite page number
-6. Keep total response < 500 words
+1. Show the element (LaTeX/markdown/code block)
+2. Explain each component using a bullet point list
+3. Use **bold** font for all variable names, important keywords, and titles
+4. Describe the mathematical/logical/programmatic relationship
+5. Provide context from document
+6. Cite page number
+7. Keep total response < 500 words
 
 Structure:
+**[Title of Element]**
 [Element display]
 "This represents..."
-"Where: variable X is..., variable Y is..."
+- **Variable X**: ...
+- **Variable Y**: ...
 "Found on page N in section [...]"
 """
 
@@ -244,7 +249,8 @@ Before answering, ask yourself:
 2. NEVER claim "not found" without thoroughly checking context
 3. NEVER add explanations about other elements unless asked
 4. ALWAYS cite page numbers from metadata when available
-5. ALWAYS format equations in $$...$$ LaTeX syntax
+5. ALWAYS format equations in $$...$$ LaTeX syntax and code in ```blocks```
+6. ALWAYS use bullet points if your response contains multiple points, and **bold** font for keywords/titles.
 
 WHEN IN DOUBT:
 - Re-read the context

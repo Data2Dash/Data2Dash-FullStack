@@ -32,6 +32,7 @@ PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 
 # Script paths
 RUN_SUMMARIZER_SCRIPT = os.path.join(PROJECT_ROOT, "summarizer", "run_summarizer.py")
+RUN_COMPARISON_SCRIPT = os.path.join(PROJECT_ROOT, "summarization with critical review", "run_comparison.py")
 RUN_KG_SCRIPT = os.path.join(PROJECT_ROOT, "Knowledge_Graph_0.1", "run_kg.py")
 RUN_KG_QUERY_SCRIPT = os.path.join(PROJECT_ROOT, "Knowledge_Graph_0.1", "run_kg_query.py")
 
@@ -238,6 +239,7 @@ class ImportPaperRequest(BaseModel):
     paper_id: str
     session_id: str
     title: str
+    pdf_url: Optional[str] = None
 
 class CitationSearchRequest(BaseModel):
     sentence: str
@@ -290,19 +292,26 @@ def chat_ai(
 ):
     agent = get_chat_agent()
     try:
-        # Normalise to a plain string — the DB column is String(36) on SQLite
-        sid = str(uuid.UUID(request.session_id))  # validates & normalises format
-        
+        # Normalise session_id to a UUID string — fall back to uuid5 hash for non-UUID values
+        raw_sid = request.session_id or ""
+        try:
+            sid = str(uuid.UUID(raw_sid))
+        except (ValueError, AttributeError):
+            sid = str(uuid.uuid5(uuid.NAMESPACE_DNS, raw_sid or "default"))
+
+        # Filter out system-role entries — those are context injections, not real chat messages
+        real_history = [m for m in (request.history or []) if m.get("role") in ("user", "ai")]
+
         # 1. Get or create session
         session = db.query(ChatSession).filter(ChatSession.session_id == sid).first()
         if not session:
             ws = db.query(Workspace).filter(Workspace.user_id == current_user.id).first()
             if not ws:
                 raise HTTPException(status_code=404, detail="Workspace not found")
-            
+
             # Generate a title from the first query (first 50 chars)
             title = request.query[:50] + "..." if len(request.query) > 50 else request.query
-            
+
             session = ChatSession(
                 session_id=sid,
                 user_id=current_user.id,
@@ -321,11 +330,11 @@ def chat_ai(
         )
         db.add(user_msg)
 
-        # 3. Get AI Response
+        # 3. Get AI Response — pass only real (non-system) history to the agent
         print(f"Calling ChatAgent.run for session {sid}...")
         # Pass the global pdf_agent singleton so DocumentReader can access loaded sessions
         _pdf = get_pdf_agent() if GROQ_API_KEY else None
-        result = agent.run(request.query, request.history, sid, pdf_agent_instance=_pdf)
+        result = agent.run(request.query, real_history, sid, pdf_agent_instance=_pdf)
         print("ChatAgent.run completed successfully.")
         
         # 4. Save AI Message
@@ -559,6 +568,36 @@ def clear_context(session_id: str):
     agent.clear_context(session_id)
     return {"message": "Context cleared successfully"}
 
+
+class PDFReindexRequest(BaseModel):
+    session_id: str
+    filename: str
+
+
+@app.post("/api/pdf/reindex")
+async def reindex_pdf(request: PDFReindexRequest):
+    """Re-index an already-uploaded PDF so the agent can chat with it again
+    (e.g. after a page refresh when the in-memory session was lost)."""
+    agent = get_pdf_agent()
+
+    # If the session is already loaded, skip expensive re-processing
+    if request.session_id in agent.systems:
+        return {"message": "Session already indexed", "status": "ready"}
+
+    pdf_path = os.path.join("data", "uploads", request.session_id, request.filename)
+    if not os.path.exists(pdf_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"PDF file not found on disk: {request.filename}",
+        )
+
+    try:
+        result = agent.process_pdf_with_name(pdf_path, request.session_id, request.filename)
+        return {"message": result, "status": "ready"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Figure Analysis Endpoints
 
 @app.get("/api/pdf/figures")
@@ -588,6 +627,14 @@ class SummarizeRequest(BaseModel):
     session_id: str
     filename: str
     pdf_url: Optional[str] = None
+
+class CompareRequest(BaseModel):
+    session_id_a: str
+    filename_a: str
+    pdf_url_a: Optional[str] = None
+    session_id_b: str
+    filename_b: str
+    pdf_url_b: Optional[str] = None
 
 class KGRequest(BaseModel):
     session_id: str
@@ -661,6 +708,41 @@ def extract_summary(request: SummarizeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error in Summarizer: {str(e)}")
 
+@app.post("/api/pdf/compare")
+def compare_papers(request: CompareRequest):
+    try:
+        pdf_path_a = os.path.join("data", "uploads", request.session_id_a, request.filename_a)
+        ensure_pdf_exists(pdf_path_a, request.pdf_url_a)
+        
+        pdf_path_b = os.path.join("data", "uploads", request.session_id_b, request.filename_b)
+        ensure_pdf_exists(pdf_path_b, request.pdf_url_b)
+            
+        output_path = f"{pdf_path_a}.compare.json"
+        
+        if not os.path.exists(output_path):
+            cmd = [
+                sys.executable,
+                RUN_COMPARISON_SCRIPT,
+                pdf_path_a,
+                pdf_path_b,
+                output_path,
+                os.getenv("GROQ_API_KEY", ""),
+                "llama-3.1-8b-instant"
+            ]
+            
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"Comparison failed: {proc.stderr}")
+                
+        with open(output_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error in Comparison: {str(e)}")
+
 @app.post("/api/pdf/knowledge-graph")
 def generate_kg(request: KGRequest):
     try:
@@ -678,9 +760,15 @@ def generate_kg(request: KGRequest):
                 output_path
             ]
             proc = subprocess.run(cmd, capture_output=True, text=True)
-            if proc.returncode != 0:
-                raise HTTPException(status_code=500, detail=f"KG Extraction failed: {proc.stderr}")
-                
+            
+            # parse json output
+            try:
+                res = json.loads(proc.stdout)
+                if "error" in res:
+                    raise HTTPException(status_code=500, detail=f"KG Extraction failed: {res['error']}")
+            except json.JSONDecodeError:
+                if proc.returncode != 0:
+                    raise HTTPException(status_code=500, detail=f"KG Extraction failed. Code: {proc.returncode}. Stderr: {proc.stderr}. Stdout: {proc.stdout}")
         # Serve the HTML file from the static uploads mount
         rel_path = output_path.replace("\\", "/").replace("data/uploads/", "").lstrip("/")
         url = f"{BACKEND_URL}/api/uploads/{rel_path}"
@@ -757,22 +845,41 @@ async def import_paper(
             pass
 
     try:
-        import arxiv
-        client = arxiv.Client()
-        search = arxiv.Search(id_list=[request.paper_id])
-        result = next(client.results(search))
+        # Determine if we should use arxiv client
+        raw_id = request.paper_id
+        is_arxiv = False
+        if "arxiv.org" in raw_id:
+            raw_id = raw_id.split("/")[-1].replace(".pdf", "")
+            is_arxiv = True
+        elif re.match(r'^\d{4}\.\d{4,5}(v\d+)?$', raw_id):
+            is_arxiv = True
 
         # Save directory
         upload_dir = os.path.join("data", "uploads", request.session_id)
         os.makedirs(upload_dir, exist_ok=True)
 
-        # Filename logic: use a sanitized title or paper_id
+        # Filename logic
         safe_title = re.sub(r'[^\w\s-]', '', request.title).strip().replace(' ', '_')[:50]
-        filename = f"{safe_title}_{request.paper_id}.pdf"
+        filename = f"{safe_title}_{raw_id}.pdf".replace("/", "_")
         file_path = os.path.join(upload_dir, filename)
 
-        # Download
-        result.download_pdf(dirpath=upload_dir, filename=filename)
+        if is_arxiv:
+            import arxiv
+            client = arxiv.Client()
+            search = arxiv.Search(id_list=[raw_id])
+            try:
+                result = next(client.results(search))
+                result.download_pdf(dirpath=upload_dir, filename=filename)
+            except StopIteration:
+                if request.pdf_url:
+                    ensure_pdf_exists(file_path, request.pdf_url)
+                else:
+                    raise HTTPException(status_code=400, detail="Paper not found on ArXiv and no fallback PDF URL provided.")
+        else:
+            if request.pdf_url:
+                ensure_pdf_exists(file_path, request.pdf_url)
+            else:
+                raise HTTPException(status_code=400, detail="Not an ArXiv ID and no PDF URL provided to download. Cannot index this paper.")
 
         # Extract figures immediately
         agent = get_vision_agent()
@@ -815,6 +922,8 @@ async def import_paper(
             "pdf_url": f"{BACKEND_URL}/api/uploads/{request.session_id}/{filename}",
             "pdf_size": size_str,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to import paper: {str(e)}")
 
@@ -919,6 +1028,12 @@ def download_podcast(task_id: str):
 @app.post("/api/youtube/search")
 def search_youtube_videos(request: YouTubeSearchRequest):
     """Search for YouTube videos related to a research paper"""
+    # If no API key configured, return empty results instead of 500
+    if not YOUTUBE_API_KEY:
+        return YouTubeSearchResponse(
+            videos=[],
+            query_used=request.paper_title
+        )
     try:
         agent = get_youtube_agent()
         

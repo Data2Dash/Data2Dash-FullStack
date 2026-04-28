@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   MessageSquare, Image as ImageIcon, Share2, Headphones, FileText, Quote,
   X, Send, Download, Loader2, Video, ExternalLink, ChevronLeft, Sparkles, Eye,
-  BrainCircuit, CheckCircle2, XCircle, RotateCcw, ChevronRight, Trophy, RefreshCw
+  BrainCircuit, CheckCircle2, XCircle, RotateCcw, ChevronRight, Trophy, RefreshCw, Scale
 } from 'lucide-react';
+import { CompareTab } from './CompareTab';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { generatePodcast, pollPodcastStatus, getPodcastAudioUrl, type PodcastStatusResponse } from '../../api/podcastService';
@@ -310,13 +311,31 @@ function DiagramTab({ sessionId, fileName }: { sessionId: string; fileName: stri
                 <Sparkles className="h-3.5 w-3.5 text-stone-900" />
                 <h5 className="text-xs font-bold uppercase tracking-widest text-stone-900">AI Explanation</h5>
               </div>
-              <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-soft">
-                {isAnalyzing && !analysis ? "Analysing..." : analysis}
+              <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-soft prose prose-sm prose-stone max-w-none">
+                {isAnalyzing && !analysis ? "Analysing..." : (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={codeComponents}
+                  >
+                    {cleanTableMarkdown(normalizeEquations(analysis || ''))}
+                  </ReactMarkdown>
+                )}
               </div>
               {figureMessages.map((msg, i) => (
                 <div key={i} className={clsx("flex gap-2", msg.role === 'user' ? 'flex-row-reverse' : 'flex-row')}>
-                  <div className={clsx("rounded-xl px-3 py-2 text-xs leading-relaxed max-w-[85%]", msg.role === 'ai' ? 'bg-white border border-stone-200' : 'bg-stone-900 text-white')}>
-                    {msg.content}
+                  <div className={clsx("rounded-xl px-4 py-3 text-sm leading-relaxed max-w-[85%]", msg.role === 'ai' ? 'bg-white border border-stone-200 prose prose-sm prose-stone max-w-none' : 'bg-stone-900 text-white')}>
+                    {msg.role === 'ai' ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        components={codeComponents}
+                      >
+                        {cleanTableMarkdown(normalizeEquations(msg.content))}
+                      </ReactMarkdown>
+                    ) : (
+                      msg.content
+                    )}
                   </div>
                 </div>
               ))}
@@ -932,6 +951,10 @@ interface PaperInteractionPanelProps {
   onClose?: () => void;
   onSendMessage?: (message: string) => Promise<{ response: string; sources?: Citation[] }>;
   isImporting?: boolean;
+  /** Pre-loaded chat history (e.g. restored from localStorage / DB) */
+  chatHistory?: { role: 'user' | 'ai'; content: string }[];
+  availableFilesToCompare?: { id: string; name: string; sessionId: string }[];
+  alwaysShowCompare?: boolean;
 }
 
 export function PaperInteractionPanel({
@@ -944,10 +967,13 @@ export function PaperInteractionPanel({
   pdfSize,
   onClose,
   onSendMessage,
-  isImporting = false
+  isImporting = false,
+  chatHistory,
+  availableFilesToCompare,
+  alwaysShowCompare,
 }: PaperInteractionPanelProps) {
   const [activeTab, setActiveTab] = useState<string>('chat');
-  const [messages, setMessages] = useState<Message[]>([{ role: 'ai', content: initialMessage }]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
@@ -962,6 +988,16 @@ export function PaperInteractionPanel({
   const fileName = propFileName === null ? null : (propFileName || calculatedFileName);
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
+
+  // Synchronize messages when session changes or initial message updates
+  useEffect(() => {
+    const restored: Message[] = [
+      { role: 'ai', content: initialMessage },
+      ...(chatHistory || []).map((m) => ({ role: m.role as 'user'|'ai', content: m.content })),
+    ];
+    setMessages(restored);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, initialMessage]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading || !onSendMessage) return;
@@ -987,25 +1023,33 @@ export function PaperInteractionPanel({
           {onClose && <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors shrink-0"><X className="h-4 w-4" /></button>}
         </div>
         <div className="flex gap-1 overflow-x-auto pb-3 no-scrollbar">
-          {[
-            { id: 'chat', Icon: MessageSquare, label: 'Chat' },
-            { id: 'quiz', Icon: BrainCircuit, label: 'Quiz' },
-            { id: 'view', Icon: Eye, label: 'View' },
-            { id: 'diagram', Icon: ImageIcon, label: 'Figures' },
-            { id: 'podcast', Icon: Headphones, label: 'Audio' },
-            { id: 'video', Icon: Video, label: 'Videos' },
-            { id: 'graph', Icon: Share2, label: 'Knowledge Graph' },
-            { id: 'report', Icon: FileText, label: 'Summarize' },
-          ].map(({ id, Icon, label }) => (
-            <button key={id} onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
-                activeTab === id
-                  ? id === 'quiz' ? 'bg-stone-900 text-white ring-2 ring-stone-900 ring-offset-1' : 'bg-stone-900 text-white'
-                  : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'
-              }`}>
-              <Icon className="h-3.5 w-3.5" />{label}
-            </button>
-          ))}
+          {(() => {
+            const tabs = [
+              { id: 'chat', Icon: MessageSquare, label: 'Chat' },
+              { id: 'quiz', Icon: BrainCircuit, label: 'Quiz' },
+              { id: 'view', Icon: Eye, label: 'View' },
+              { id: 'diagram', Icon: ImageIcon, label: 'Figures' },
+              { id: 'podcast', Icon: Headphones, label: 'Audio' },
+              { id: 'video', Icon: Video, label: 'Videos' },
+              { id: 'graph', Icon: Share2, label: 'Knowledge Graph' },
+              { id: 'report', Icon: FileText, label: 'Summarize' },
+            ];
+            
+            if (alwaysShowCompare || (availableFilesToCompare && availableFilesToCompare.length > 1)) {
+              tabs.push({ id: 'compare', Icon: Scale, label: 'Compare' });
+            }
+
+            return tabs.map(({ id, Icon, label }) => (
+              <button key={id} onClick={() => setActiveTab(id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+                  activeTab === id
+                    ? id === 'quiz' ? 'bg-stone-900 text-white ring-2 ring-stone-900 ring-offset-1' : 'bg-stone-900 text-white'
+                    : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'
+                }`}>
+                <Icon className="h-3.5 w-3.5" />{label}
+              </button>
+            ));
+          })()}
         </div>
       </div>
 
@@ -1026,10 +1070,7 @@ export function PaperInteractionPanel({
                     <div className={clsx("h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-[11px] font-semibold", msg.role === 'ai' ? 'bg-stone-900 text-white' : 'bg-stone-200 text-stone-700')}>{msg.role === 'ai' ? 'AI' : 'You'}</div>
                     <div className={clsx("rounded-2xl px-4 py-3 text-sm max-w-[80%] leading-relaxed", msg.role === 'ai' ? 'bg-stone-50 border border-stone-100 text-stone-800' : 'bg-stone-900 text-white')}>
                       {msg.role === 'ai' && typeof msg.content === 'string' ? (
-                        <div className="prose prose-sm prose-stone max-w-none
-                          prose-table:w-full prose-table:text-xs prose-table:border-collapse
-                          prose-th:bg-stone-100 prose-th:px-2 prose-th:py-1 prose-th:text-left prose-th:font-semibold prose-th:border prose-th:border-stone-300
-                          prose-td:px-2 prose-td:py-1 prose-td:border prose-td:border-stone-200 even:prose-tr:bg-stone-50">
+                        <div className="prose prose-sm prose-stone max-w-none">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
@@ -1114,6 +1155,7 @@ export function PaperInteractionPanel({
         {activeTab === 'video' && <VideoTab paperTitle={title} paperAbstract={subtitle} />}
         {activeTab === 'graph' && <KnowledgeGraphTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}
         {activeTab === 'report' && <SummarizeTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}
+        {activeTab === 'compare' && <CompareTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} availableFiles={availableFilesToCompare} isSearchMode={alwaysShowCompare} />}
       </div>
     </div>
   );

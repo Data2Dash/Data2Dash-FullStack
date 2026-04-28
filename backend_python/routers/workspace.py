@@ -25,13 +25,18 @@ router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 def _get_workspace(user: User, db: Session) -> Workspace:
     ws = db.query(Workspace).filter(Workspace.user_id == user.id).first()
     if not ws:
-        raise HTTPException(status_code=404, detail="Workspace not found. Try logging out and back in.")
+        from routers.auth import _ensure_workspace
+        _ensure_workspace(user, db)
+        ws = db.query(Workspace).filter(Workspace.user_id == user.id).first()
+        if not ws:
+            raise HTTPException(status_code=404, detail="Failed to create workspace.")
     return ws
 
 
 # ── Workspace overview ─────────────────────────────────────────────────────────
 
-@router.get("/", response_model=WorkspaceSummary)
+@router.get("", response_model=WorkspaceSummary)
+@router.get("/", response_model=WorkspaceSummary, include_in_schema=False)
 def get_workspace_summary(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
