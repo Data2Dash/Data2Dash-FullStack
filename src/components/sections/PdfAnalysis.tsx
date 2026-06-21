@@ -213,6 +213,7 @@ export function PdfAnalysis() {
     files, activeFileId, reindexedSessions,
     addFile, updateFile, removeFile, setActiveFileId,
     markReindexed, addChatMessage, chatMessages, setChatMessagesForFile,
+    hardReset,
   } = usePdfStore();
 
   const [reindexing, setReindexing] = useState(false);
@@ -281,14 +282,43 @@ export function PdfAnalysis() {
           body: formData,
         });
         const data = await res.json();
-        updateFile(entry.id, { status: 'ready', url: data.url });
-        // Auto-select the first file if none is active
-        if (!activeFileId) {
-          setActiveFileId(entry.id);
-        }
-        markReindexed(entry.sessionId); // Just uploaded = already indexed
-        // Refresh the workspace sidebar so the new file appears immediately
+        updateFile(entry.id, { url: data.url });
+
+        // Set active immediately — user can see the PDF viewer
+        if (!activeFileId) setActiveFileId(entry.id);
         triggerRefresh();
+
+        if (data.indexing) {
+          // Fire-and-forget polling — non-blocking, runs in background
+          const pollUrl = `${API_URL}/api/pdf/indexing-status/${entry.sessionId}/${encodeURIComponent(file.name)}`;
+          (async () => {
+            for (let attempt = 0; attempt < 90; attempt++) {
+              await new Promise(r => setTimeout(r, 3000));
+              try {
+                const pollRes = await fetch(pollUrl);
+                const pollData = await pollRes.json();
+                if (pollData.status === 'ready') {
+                  updateFile(entry.id, { status: 'ready' });
+                  markReindexed(entry.sessionId);
+                  triggerRefresh();
+                  return;
+                }
+                if (pollData.status === 'error') {
+                  updateFile(entry.id, { status: 'error' });
+                  return;
+                }
+              } catch { /* retry */ }
+            }
+            // Timeout after ~4.5 min — mark ready anyway (text is likely done)
+            updateFile(entry.id, { status: 'ready' });
+            markReindexed(entry.sessionId);
+          })();
+          // Don't await — continue to next file immediately
+          updateFile(entry.id, { status: 'uploading' });
+        } else {
+          updateFile(entry.id, { status: 'ready' });
+          markReindexed(entry.sessionId);
+        }
       } catch {
         updateFile(entry.id, { status: 'error' });
       }
@@ -299,9 +329,14 @@ export function PdfAnalysis() {
     removeFile(id);
   }, [removeFile]);
 
+  const handleHardReset = useCallback(() => {
+    hardReset();
+    triggerRefresh();
+  }, [hardReset, triggerRefresh]);
+
   // ── Empty state ──────────────────────────────────────────────────────────────
   if (files.length === 0) {
-    return <EmptyState onUpload={processFiles} />;
+    return <EmptyState onUpload={processFiles} onHardReset={handleHardReset} />;
   }
 
   // ── Workspace ────────────────────────────────────────────────────────────────
@@ -421,7 +456,7 @@ export function PdfAnalysis() {
 }
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
-function EmptyState({ onUpload }: { onUpload: (fl: FileList) => void }) {
+function EmptyState({ onUpload, onHardReset }: { onUpload: (fl: FileList) => void; onHardReset?: () => void }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -478,6 +513,15 @@ function EmptyState({ onUpload }: { onUpload: (fl: FileList) => void }) {
             </span>
           ))}
         </div>
+
+        {onHardReset && (
+          <button
+            onClick={onHardReset}
+            className="mt-6 px-4 py-2 text-xs font-medium text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg border border-stone-200 transition-colors"
+          >
+            Hard Reset (Clear all sessions)
+          </button>
+        )}
       </motion.div>
     </div>
   );

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
-import { 
-  MessageSquare, Search, Upload, BookMarked, Home, 
-  Plus, FileText, Clock, Zap, FolderOpen, LogOut, Sparkles 
+import {
+  MessageSquare, Search, Upload, BookMarked, Home,
+  Plus, FileText, Clock, Zap, FolderOpen, LogOut, Sparkles, Trash2
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -26,7 +26,7 @@ export function Sidebar({ summary }: SidebarProps) {
   const { user, isAuthenticated, token } = useAuthStore();
   const { docs } = useDocumentLibrary(user?.id ?? null, token);
   const setPendingOpenDocId = useCitationStore(s => s.setPendingOpenDocId);
-  const { sessionId, setMessages, setSessionId, resetChat } = useChatStore();
+  const { sessionId, setMessages, setSessionId, resetChat, triggerRefresh } = useChatStore();
   const { isSidebarOpen, toggleSidebar } = useUIStore();
   const { sessions: searchSessions, activeSessionId: activeSearchId, newSearch, loadSession } = useSearchStore();
   const pdfStore = usePdfStore();
@@ -36,6 +36,7 @@ export function Sidebar({ summary }: SidebarProps) {
   const path = location.pathname;
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [deletedNames, setDeletedNames] = useState<Set<string>>(new Set());
 
   if (!isAuthenticated) return null;
 
@@ -133,27 +134,72 @@ export function Sidebar({ summary }: SidebarProps) {
     }
 
     if (path === '/upload') {
-      // Extract session_id from storage_path: "data/uploads/{session_id}/{filename}" or "data\uploads\{sid}\{fname}"
+      // Helper: extract session_id from file (use new field, fallback to path parsing)
+      const getSessionId = (file: typeof summary.recent_files[0]): string => {
+        if (file.session_id) return file.session_id;
+        const parts = (file.storage_path || '').replace(/\\/g, '/').split('/');
+        const idx = parts.findIndex(p => p === 'uploads');
+        return idx >= 0 && parts.length > idx + 1 ? parts[idx + 1] : '';
+      };
+
+      const getFileUrl = (file: typeof summary.recent_files[0]): string => {
+        if (file.url) return file.url;
+        const sid = getSessionId(file);
+        return sid ? `${API_URL}/api/uploads/${sid}/${file.filename}` : '';
+      };
+
+      const getDisplayName = (file: typeof summary.recent_files[0]): string =>
+        file.original_name || file.filename || '';
+
+      const handleFileDelete = async (e: React.MouseEvent, file: typeof summary.recent_files[0]) => {
+        e.stopPropagation();
+        const sid = getSessionId(file);
+        const name = getDisplayName(file);
+        if (!sid || !file.filename) return;
+
+        // Optimistic: hide immediately using file_id + display name + filename
+        setDeletedNames(prev => {
+          const next = new Set(prev);
+          next.add(file.file_id);
+          next.add(name);
+          next.add(file.filename);
+          return next;
+        });
+
+        // Reset active viewer if this session is currently loaded
+        const activeFile = pdfStore.files.find(f => f.id === pdfStore.activeFileId);
+        if (activeFile && activeFile.sessionId === sid) {
+          pdfStore.newSession();
+        }
+
+        try {
+          const res = await fetch(`${API_URL}/api/pdf/delete/${encodeURIComponent(file.filename)}`, { method: 'DELETE' });
+          if (!res.ok) {
+            // Revert
+            setDeletedNames(prev => { const next = new Set(prev); next.delete(file.file_id); next.delete(name); next.delete(file.filename); return next; });
+            return;
+          }
+          triggerRefresh();
+        } catch {
+          setDeletedNames(prev => { const next = new Set(prev); next.delete(file.file_id); next.delete(name); next.delete(file.filename); return next; });
+        }
+      };
+
       const handleFileRestore = async (file: typeof summary.recent_files[0]) => {
-        const parts = file.storage_path.replace(/\\/g, '/').split('/');
-        // Find the segment after "uploads"
-        const uploadsIdx = parts.findIndex(p => p === 'uploads');
-        const sid = uploadsIdx >= 0 && parts.length > uploadsIdx + 1 ? parts[uploadsIdx + 1] : null;
+        const sid = getSessionId(file);
         if (!sid) return;
 
-        const url = `${API_URL}/api/uploads/${sid}/${file.filename}`;
+        const url = getFileUrl(file);
         const sizeStr = `${(file.size_bytes / 1024 / 1024).toFixed(1)} MB`;
+        const name = getDisplayName(file);
 
-        // Restore the session in the PDF store
         pdfStore.restoreSession(
-          [{ id: `${file.filename}_restored`, name: file.original_name, size: sizeStr, status: 'ready', url, sessionId: sid }],
-          `${file.filename}_restored`,
+          [{ id: file.file_id, name, size: sizeStr, status: 'ready', url, sessionId: sid }],
+          file.file_id,
         );
 
-        // Load any previous chat messages for this session from the DB
         if (token) {
           try {
-            // Find a PDF session matching this session_id
             const pdfSessions = summary?.recent_sessions?.filter(s => s.session_type === 'pdf') || [];
             for (const sess of pdfSessions) {
               if (sess.session_id === sid) {
@@ -162,7 +208,7 @@ export function Sidebar({ summary }: SidebarProps) {
                   role: m.role as 'user' | 'ai',
                   content: m.content ?? '',
                 }));
-                pdfStore.setChatMessages(mapped);
+                pdfStore.setChatMessagesForFile(file.file_id, mapped);
                 break;
               }
             }
@@ -174,7 +220,6 @@ export function Sidebar({ summary }: SidebarProps) {
         if (path !== '/upload') navigate('/upload');
       };
 
-      // Handle clicking a PDF chat session
       const handlePdfSessionClick = async (sess: typeof summary.recent_sessions[0]) => {
         if (!token) return;
         try {
@@ -184,27 +229,21 @@ export function Sidebar({ summary }: SidebarProps) {
             content: m.content ?? '',
           }));
 
-          // Find the file for this session from the files list
-          const matchingFile = summary?.recent_files?.find(f => {
-            const parts = f.storage_path.replace(/\\/g, '/').split('/');
-            const uploadsIdx = parts.findIndex(p => p === 'uploads');
-            const sid = uploadsIdx >= 0 && parts.length > uploadsIdx + 1 ? parts[uploadsIdx + 1] : null;
-            return sid === sess.session_id;
-          });
+          const matchingFile = summary?.recent_files?.find(f => getSessionId(f) === sess.session_id);
 
           if (matchingFile) {
-            const sid = sess.session_id;
-            const url = `${API_URL}/api/uploads/${sid}/${matchingFile.filename}`;
+            const url = getFileUrl(matchingFile);
             const sizeStr = `${(matchingFile.size_bytes / 1024 / 1024).toFixed(1)} MB`;
             pdfStore.restoreSession(
-              [{ id: `${matchingFile.filename}_restored`, name: matchingFile.original_name, size: sizeStr, status: 'ready', url, sessionId: sid }],
-              `${matchingFile.filename}_restored`,
+              [{ id: matchingFile.file_id, name: getDisplayName(matchingFile), size: sizeStr, status: 'ready', url, sessionId: sess.session_id }],
+              matchingFile.file_id,
             );
           } else {
-            // No file match — just set the session and messages
             pdfStore.restoreSession([], null);
           }
-          pdfStore.setChatMessages(mapped);
+          if (matchingFile) {
+            pdfStore.setChatMessagesForFile(matchingFile.file_id, mapped);
+          }
 
           if (path !== '/upload') navigate('/upload');
         } catch (err) {
@@ -214,21 +253,45 @@ export function Sidebar({ summary }: SidebarProps) {
 
       const pdfSessions = summary?.recent_sessions?.filter(s => s.session_type === 'pdf') || [];
 
+      // Filter: exclude deleted files and deduplicate by display name
+      const uniqueFiles = (() => {
+        const raw = summary?.recent_files || [];
+        const seen = new Set<string>();
+        return raw.filter(f => {
+          const name = getDisplayName(f);
+          if (deletedNames.has(f.file_id) || deletedNames.has(name) || deletedNames.has(f.filename)) return false;
+          if (seen.has(name)) return false;
+          seen.add(name);
+          return true;
+        });
+      })();
+
       return (
         <>
           {/* Recent uploaded files */}
           <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Recent Uploads</p>
           <div className="space-y-1">
-            {summary?.recent_files?.length
-              ? summary.recent_files.map(f => (
-                <button
+            {uniqueFiles.length
+              ? uniqueFiles.map(f => (
+                <div
                   key={f.file_id}
-                  onClick={() => handleFileRestore(f)}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-stone-100 text-sm font-medium text-stone-600 hover:text-stone-900 truncate flex items-center gap-2 transition-colors"
+                  className="group flex items-center gap-1"
                 >
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-                  <span className="truncate">{f.original_name}</span>
-                </button>
+                  <button
+                    onClick={() => handleFileRestore(f)}
+                    className="flex-1 min-w-0 text-left px-3 py-2 rounded-xl hover:bg-stone-100 text-sm font-medium text-stone-600 hover:text-stone-900 truncate flex items-center gap-2 transition-colors"
+                  >
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                    <span className="truncate">{f.original_name}</span>
+                  </button>
+                  <button
+                    onClick={(e) => handleFileDelete(e, f)}
+                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                    title="Delete file"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))
               : <p className="text-xs text-stone-400 px-3">No files uploaded.</p>
             }

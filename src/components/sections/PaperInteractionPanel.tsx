@@ -989,15 +989,27 @@ export function PaperInteractionPanel({
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
-  // Synchronize messages when session changes or initial message updates
+  // Synchronize messages ONLY when the session actually changes (new file selected).
+  // Do NOT include initialMessage in deps — it's a JSX element that creates a new
+  // reference on every render, causing infinite re-sync and message duplication.
+  const prevSessionRef = useRef(sessionId);
   useEffect(() => {
-    const restored: Message[] = [
-      { role: 'ai', content: initialMessage },
-      ...(chatHistory || []).map((m) => ({ role: m.role as 'user'|'ai', content: m.content })),
-    ];
-    setMessages(restored);
+    if (prevSessionRef.current !== sessionId) {
+      prevSessionRef.current = sessionId;
+      const restored: Message[] = [
+        { role: 'ai', content: initialMessage },
+        ...(chatHistory || []).map((m) => ({ role: m.role as 'user'|'ai', content: m.content })),
+      ];
+      setMessages(restored);
+    } else if (messages.length === 0) {
+      // Initial mount — populate from history
+      setMessages([
+        { role: 'ai', content: initialMessage },
+        ...(chatHistory || []).map((m) => ({ role: m.role as 'user'|'ai', content: m.content })),
+      ]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, initialMessage]);
+  }, [sessionId]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading || !onSendMessage) return;

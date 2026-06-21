@@ -65,11 +65,24 @@ class FileOut(BaseModel):
     mime_type: Optional[str]
     size_bytes: int
     storage_path: str
+    session_id: str = ""
+    url: str = ""
     is_deleted: bool
     uploaded_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    def model_post_init(self, __context: Any) -> None:
+        import os
+        if not self.session_id and self.storage_path:
+            parts = self.storage_path.replace("\\", "/").split("/")
+            idx = next((i for i, p in enumerate(parts) if p == "uploads"), -1)
+            if idx >= 0 and len(parts) > idx + 1:
+                self.session_id = parts[idx + 1]
+        if not self.url and self.session_id and self.filename:
+            backend_url = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+            self.url = f"{backend_url}/api/uploads/{self.session_id}/{self.filename}"
 
 
 class FileVersionOut(BaseModel):

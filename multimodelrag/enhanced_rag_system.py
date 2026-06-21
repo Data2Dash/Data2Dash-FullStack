@@ -30,12 +30,15 @@ from advanced_formatter import AdvancedResponseFormatter
 
 logger = logging.getLogger(__name__)
 
+# BOOT MARKER — confirms the live server loaded THIS file (eq guard + table guard)
+print(f"[BOOT] enhanced_rag_system.py loaded v=2025-asset-guards mtime={os.path.getmtime(__file__):.0f}")
+
 
 @dataclass
 class EnhancedRAGConfig:
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    groq_model: str = "llama-3.3-70b-versatile"
-    groq_vision_model: str = "llama-3.2-11b-vision-preview"
+    groq_model: str = "llama-3.1-8b-instant"
+    groq_vision_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     chunk_size: int = 1200
     chunk_overlap: int = 150
     top_k: int = 6
@@ -151,7 +154,7 @@ class EnhancedRAGSystem:
     # ------------------------------------------------------------------
 
     def process_document(self, pdf_path: str) -> Dict[str, Any]:
-        logger.info("📄 Processing document: %s", pdf_path)
+        logger.info("📄 Processing document (full pipeline): %s", pdf_path)
 
         processed_doc = self.pdf_processor.process_pdf(pdf_path)
         self.current_document = processed_doc
@@ -166,6 +169,10 @@ class EnhancedRAGSystem:
         chunks = self.chunker.chunk_document(processed_doc)
         self.current_chunks = chunks
         self.vector_store.add_document(processed_doc.doc_id, chunks)
+
+        # Full pipeline = both stages complete
+        self._stage2_complete = True
+        self._stage2_error = None
 
         self.document_registry = {
             "doc_id": processed_doc.doc_id,
@@ -191,6 +198,343 @@ class EnhancedRAGSystem:
             "figure_count": len(processed_doc.figures or []),
             "num_chunks": len(chunks),
         }
+
+    # ------------------------------------------------------------------
+    # Phase 3: Two-Stage Chunked Indexing
+    # ------------------------------------------------------------------
+
+    def process_document_text_first(self, pdf_path: str) -> Dict[str, Any]:
+        """Stage 1: Index text layer only. Target: <10 seconds."""
+        import time as _time
+        t_total = _time.perf_counter()
+
+        t0 = _time.perf_counter()
+        fast_result = self.pdf_processor.extract_text_fast(pdf_path)
+        print(f"[TIMING] PDF text extraction: {_time.perf_counter() - t0:.2f}s")
+
+        doc_id = f"doc_{os.path.basename(pdf_path).replace('.', '_')}"
+        self.current_doc_id = doc_id
+
+        from multimodal_models import ProcessedDocument
+        self.current_document = ProcessedDocument(
+            doc_id=doc_id,
+            filename=os.path.basename(pdf_path),
+            num_pages=fast_result["num_pages"],
+            page_texts=fast_result["page_texts"],
+            enriched_page_texts=fast_result["page_texts"],
+            sections=[],
+            equations=[],
+            tables=[],
+            figures=[],
+            title=os.path.basename(pdf_path),
+            metadata={},
+        )
+
+        t0 = _time.perf_counter()
+        self.current_document.metadata = self._extract_document_metadata(self.current_document, pdf_path)
+        print(f"[TIMING] Metadata extraction: {_time.perf_counter() - t0:.2f}s")
+
+        t0 = _time.perf_counter()
+        chunks = self.chunker.chunk_document(self.current_document)
+        self.current_chunks = chunks
+        print(f"[TIMING] Chunking: {_time.perf_counter() - t0:.2f}s ({len(chunks)} chunks)")
+
+        t0 = _time.perf_counter()
+        self.vector_store.add_document(doc_id, chunks)
+        print(f"[TIMING] Embedding + FAISS indexing: {_time.perf_counter() - t0:.2f}s")
+
+        # Stage tracking
+        self._stage2_complete = False
+        self._stage2_error = None
+        self._stage2_pdf_path = pdf_path
+        self._stage2_table_pages = fast_result.get("table_pages", [])
+        self._stage2_started_at = _time.time()
+
+        total = _time.perf_counter() - t_total
+        print(f"[TIMING] ═══ Stage 1 TOTAL: {total:.2f}s ═══")
+
+        return {
+            "doc_id": doc_id,
+            "filename": os.path.basename(pdf_path),
+            "num_pages": fast_result["num_pages"],
+            "num_chunks": len(chunks),
+            "stage": "text_ready",
+            "table_pages_detected": len(self._stage2_table_pages),
+            "timing_seconds": round(total, 2),
+        }
+
+    def process_document_assets(self) -> Dict[str, Any]:
+        """Stage 2: Extract and index tables, equations, figures.
+        VLM calls run in parallel with a per-call timeout.
+        """
+        import traceback
+        import time as _time
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+        # FIX: these were used but never imported — Stage 2 asset conversion crashed
+        # with NameError, leaving tables/equations/figures empty on every document.
+        from multimodal_models import ProcessedEquation, ProcessedTable, ProcessedFigure
+
+        t_total = _time.perf_counter()
+
+        pdf_path = getattr(self, "_stage2_pdf_path", None)
+        if not pdf_path or not self.current_document:
+            self._stage2_complete = True
+            self._stage2_error = "No text stage found"
+            return {"stage": "error", "message": "No text stage found"}
+
+        table_pages = getattr(self, "_stage2_table_pages", None)
+
+        # ── Asset extraction (tables + equations + figures) ──
+        t0 = _time.perf_counter()
+        try:
+            assets = self.pdf_processor.extract_assets_targeted(pdf_path, table_pages)
+        except Exception as e:
+            self._stage2_complete = True
+            self._stage2_error = str(e)
+            print(f"[TIMING] Asset extraction FAILED: {e}")
+            logger.error("STAGE 2 FAILED:\n%s", traceback.format_exc())
+            return {"stage": "error", "message": str(e)}
+
+        eq_count = len(assets.get("equations", []))
+        tbl_count = len(assets.get("tables", []))
+        fig_count = len(assets.get("figures", []))
+        print(f"[TIMING] Asset extraction: {_time.perf_counter() - t0:.2f}s "
+              f"({eq_count} eq, {tbl_count} tbl, {fig_count} fig)")
+
+        # ── Convert to document model ──
+        import uuid as _uuid
+        try:
+            for e in assets.get("equations", []):
+                self.current_document.equations.append(ProcessedEquation(
+                    equation_id=f"eq_{_uuid.uuid4().hex[:8]}",
+                    global_number=e.global_number, text=e.text, latex=e.latex,
+                    page_number=e.page_num, bbox=e.bbox, section=e.section,
+                    raw_text=e.text, normalized_latex=e.latex,
+                ))
+            for t in assets.get("tables", []):
+                self.current_document.tables.append(ProcessedTable(
+                    table_id=f"tb_{_uuid.uuid4().hex[:8]}",
+                    global_number=t.global_number, page_number=t.page_num,
+                    bbox=t.bbox, markdown=t.markdown, raw_text=t.text,
+                    caption=t.caption, section=t.section,
+                ))
+            for f in assets.get("figures", []):
+                self.current_document.figures.append(ProcessedFigure(
+                    figure_id=f"fig_{_uuid.uuid4().hex[:8]}",
+                    global_number=f.global_number, page_number=f.page_num,
+                    bbox=f.bbox, image_path=f.image_path or "",
+                    caption=f.caption, raw_text=f.caption, section=f.section,
+                ))
+        except Exception as e:
+            logger.error("STAGE 2 — asset conversion failed:\n%s", traceback.format_exc())
+            self._stage2_complete = True
+            self._stage2_error = str(e)
+            return {"stage": "error", "message": str(e)}
+
+        # ── Chunk and embed new assets ──
+        t0 = _time.perf_counter()
+        added = []
+        try:
+            new_chunks = self.chunker.chunk_document(self.current_document)
+            existing_ids = {c.chunk_id for c in self.current_chunks}
+            added = [c for c in new_chunks if c.chunk_id not in existing_ids]
+            if added:
+                self.vector_store.add_document(self.current_doc_id, added)
+                self.current_chunks.extend(added)
+        except Exception as e:
+            logger.error("STAGE 2 — chunking failed:\n%s", traceback.format_exc())
+        print(f"[TIMING] Asset chunking + embedding: {_time.perf_counter() - t0:.2f}s ({len(added)} new chunks)")
+
+        self.current_document.metadata["table_count"] = len(self.current_document.tables)
+        self.current_document.metadata["figure_count"] = len(self.current_document.figures)
+        self.current_document.metadata["display_equation_count"] = len(self.current_document.equations)
+
+        # ── MARK STAGE 2 COMPLETE BEFORE VLM ──
+        # This unblocks user queries for tables/equations immediately.
+        # VLM descriptions are a bonus that runs after.
+        self._stage2_complete = True
+        self._stage2_error = None
+        print(f"[TIMING] ═══ Stage 2 CORE complete (assets indexed): {_time.perf_counter() - t_total:.2f}s ═══")
+
+        # NOTE: Figure VLM descriptions are generated LAZILY at query time via
+        # _enrich_figures_with_vlm() (only for the figure actually asked about).
+        # Running all figures here too was redundant and ~doubled the vision-call
+        # load, blowing past the 30K tokens/min free-tier limit and stalling Stage 2.
+        for fig in self.current_document.figures:
+            if not getattr(fig, "description", None):
+                fig.description = fig.caption or f"Figure {fig.global_number}"
+
+        total = _time.perf_counter() - t_total
+        print(f"[TIMING] ═══ Stage 2 TOTAL (incl. VLM): {total:.2f}s ═══")
+
+        logger.info("✅ Stage 2 complete: %d eq, %d tbl, %d fig, %d chunks",
+                    eq_count, tbl_count, fig_count, len(added))
+
+        return {
+            "stage": "assets_ready",
+            "equations_added": eq_count,
+            "tables_added": tbl_count,
+            "figures_added": fig_count,
+            "new_chunks": len(added),
+            "timing_seconds": round(total, 2),
+        }
+
+    def get_asset_status(self) -> Dict[str, Any]:
+        """Return real-time asset status for external polling."""
+        import time as _time
+        stage2_complete = getattr(self, "_stage2_complete", True)
+        stage2_error = getattr(self, "_stage2_error", None)
+        started_at = getattr(self, "_stage2_started_at", None)
+
+        elapsed = (_time.time() - started_at) if started_at else 0
+        timed_out = not stage2_complete and elapsed > 90
+
+        return {
+            "stage2_complete": stage2_complete or timed_out,
+            "assets_loaded": (
+                len(self.current_document.equations) +
+                len(self.current_document.tables) +
+                len(self.current_document.figures)
+            ) if self.current_document else 0,
+            "error": stage2_error or ("Asset extraction timed out" if timed_out else None),
+            "elapsed_seconds": round(elapsed, 1),
+        }
+
+    # ------------------------------------------------------------------
+    # Phase 4: VLM Visual Grounding (Figure Description Cache)
+    # ------------------------------------------------------------------
+
+    def _generate_figure_description(self, figure) -> str:
+        """Use the VLM to generate a textual description of a figure image.
+        Caches the result in the figure's metadata to avoid repeated API calls.
+        """
+        if not self.vision_client:
+            return ""
+
+        image_path = getattr(figure, "image_path", None) or getattr(figure, "saved_path", None)
+        if not image_path or not os.path.isfile(image_path):
+            return ""
+
+        # Check cache
+        cached = getattr(figure, "_vlm_description", None)
+        if cached:
+            return cached
+
+        try:
+            mime = self._guess_mime_type(image_path)
+            with open(image_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+
+            completion = self.vision_client.chat.completions.create(
+                model=self.config.groq_vision_model,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": (
+                            "Describe this figure from a research paper in detail. "
+                            "Include: what type of visualization it is, key components, "
+                            "labels, axes, relationships shown, and any notable patterns. "
+                            "Be factual and concise (3-5 sentences)."
+                        )},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                    ],
+                }],
+                temperature=0.1,
+                max_tokens=300,
+            )
+            description = (completion.choices[0].message.content or "").strip()
+            # Cache on the object
+            figure._vlm_description = description
+            return description
+        except Exception as e:
+            logger.warning("VLM figure description failed: %s", e)
+            return ""
+
+    def _enrich_figures_with_vlm(self, figures: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
+        """For figure-related queries, enrich retrieved figures with VLM descriptions.
+        Only triggers for the most relevant figure to conserve API calls.
+        """
+        if not figures or not self.vision_client:
+            return figures
+
+        ql = query.lower()
+        is_figure_query = any(k in ql for k in ["figure", "diagram", "architecture", "image", "visual", "overview", "pipeline"])
+        if not is_figure_query:
+            return figures
+
+        # Only describe the top figure (most relevant)
+        for fig in figures[:2]:  # Describe top 2 most relevant figures
+            image_path = fig.get("image_path") or fig.get("saved_path") or ""
+            if not image_path or not os.path.isfile(image_path):
+                continue
+
+            # Skip if already has a meaningful description (not just caption)
+            existing_desc = fig.get("description", "")
+            if existing_desc and "caption only" not in existing_desc and len(existing_desc) > 50:
+                continue
+
+            description = self._generate_figure_description_from_path(image_path)
+            if description:
+                fig["vlm_description"] = description
+                fig["description"] = description
+                print(f"[VLM] Figure {fig.get('global_number')}: {description[:100]}...")
+
+        return figures
+
+    def _generate_figure_description_from_path(self, image_path: str) -> str:
+        """Generate VLM description from a file path.
+        Downscales image to max 1024px before sending to reduce latency.
+        """
+        if not self.vision_client or not os.path.isfile(image_path):
+            return ""
+        try:
+            # Downscale to max 1024px on longest side for faster upload/inference
+            img_bytes = self._downscale_image(image_path, max_px=1024)
+            mime = "image/png"
+            b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+            completion = self.vision_client.chat.completions.create(
+                model=self.config.groq_vision_model,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": (
+                            "Describe this research figure concisely: what it shows, "
+                            "key components, and relationships. 3-5 factual sentences."
+                        )},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                    ],
+                }],
+                temperature=0.1,
+                max_tokens=200,
+            )
+            return (completion.choices[0].message.content or "").strip()
+        except Exception as e:
+            logger.warning("VLM description generation failed: %s", e)
+            return ""
+
+    @staticmethod
+    def _downscale_image(image_path: str, max_px: int = 1024) -> bytes:
+        """Read image, downscale if larger than max_px, return PNG bytes."""
+        import io
+        try:
+            from PIL import Image
+            img = Image.open(image_path)
+            w, h = img.size
+            if max(w, h) > max_px:
+                scale = max_px / max(w, h)
+                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG", optimize=True)
+            return buf.getvalue()
+        except ImportError:
+            # Pillow not installed — send raw file
+            with open(image_path, "rb") as f:
+                return f.read()
+
+    # ------------------------------------------------------------------
+    # Document metadata extraction
+    # ------------------------------------------------------------------
 
     def _extract_document_metadata(self, doc, pdf_path: str) -> Dict[str, Any]:
         meta = {
@@ -380,6 +724,41 @@ class EnhancedRAGSystem:
         all_tables = [self._table_to_ui_dict(tb) for tb in self.current_document.tables]
         all_figures = [self._figure_to_ui_dict(fig) for fig in self.current_document.figures]
 
+        # ── Asset Status Awareness (uses explicit boolean, not proxy) ──
+        import time as _time
+        stage2_complete = getattr(self, "_stage2_complete", True)  # default True for full-pipeline docs
+        stage2_error = getattr(self, "_stage2_error", None)
+        stage2_started = getattr(self, "_stage2_started_at", None)
+        stage2_timed_out = (
+            not stage2_complete
+            and stage2_started is not None
+            and (_time.time() - stage2_started) > 90
+        )
+
+        is_asset_query = any(k in ql for k in [
+            "table", "figure", "diagram", "image", "equation", "formula",
+            "score", "result", "performance", "architecture",
+        ])
+
+        # Only block if Stage 2 is genuinely still running (not timed out, not errored)
+        if is_asset_query and not stage2_complete and not stage2_timed_out:
+            elapsed = round(_time.time() - stage2_started, 0) if stage2_started else 0
+            return {
+                "answer": f"Asset extraction is still in progress ({int(elapsed)}s elapsed). Tables, equations, and figures will be available shortly. Please try again in a few seconds.",
+                "sources": [],
+                "equations": [],
+                "tables": [],
+                "figures": [],
+                "validated": True,
+                "mode": "pending",
+            }
+
+        # If timed out or errored, communicate clearly instead of looping
+        if is_asset_query and stage2_timed_out:
+            logger.warning("Stage 2 timed out after 90s — allowing query to proceed with text-only context")
+        if is_asset_query and stage2_error:
+            logger.warning("Stage 2 had error: %s — allowing query to proceed", stage2_error)
+
         if self._is_all_request(ql, "equation"):
             return self._finalize_response(
                 query=q,
@@ -419,6 +798,21 @@ class EnhancedRAGSystem:
                 force_validated=True,
             )
 
+        # ── Priority Asset Routing ──
+        # For table/figure queries, inject ALL relevant assets directly into context
+        # before running vector retrieval (ensures full table markdown is available)
+        force_tables = []
+        force_figures = []
+        force_equations = []
+
+        if is_asset_query:
+            if any(k in ql for k in ["table", "score", "result", "performance", "compare", "benchmark"]):
+                force_tables = all_tables
+            if any(k in ql for k in ["figure", "diagram", "architecture", "image", "visual"]):
+                force_figures = all_figures
+            if any(k in ql for k in ["equation", "formula"]):
+                force_equations = all_equations
+
         retrieved = self._retrieve_context(q)
 
         boosted_equations, boosted_tables, boosted_figures = self._boost_and_select_assets(
@@ -428,6 +822,17 @@ class EnhancedRAGSystem:
             all_tables=all_tables,
             all_figures=all_figures,
         )
+
+        # Merge force-injected assets (priority routing)
+        if force_tables and not boosted_tables:
+            boosted_tables = force_tables
+        if force_figures and not boosted_figures:
+            boosted_figures = force_figures
+        if force_equations and not boosted_equations:
+            boosted_equations = force_equations
+
+        # Phase 4: Enrich figures with VLM-generated descriptions
+        boosted_figures = self._enrich_figures_with_vlm(boosted_figures, q)
 
         context_text = self._build_context_text(
             query=q,
@@ -446,6 +851,7 @@ class EnhancedRAGSystem:
             figures=boosted_figures,
         )
 
+        # If LLM still says "cannot find" but we have assets, try direct answer
         if not answer_text or self._looks_broken(answer_text) or self._looks_like_not_found(answer_text):
             direct = self._direct_keyword_snippet_answer(q, boosted_equations, boosted_tables, boosted_figures, retrieved)
             if direct:
@@ -454,6 +860,8 @@ class EnhancedRAGSystem:
         if not answer_text or self._looks_broken(answer_text) or self._looks_like_not_found(answer_text):
             answer_text = self._fallback_grounded_answer(q, retrieved, boosted_equations, boosted_tables, boosted_figures)
 
+        # (Equation LaTeX guard runs at the END of _finalize_response, after the
+        #  formatter — otherwise leak-removal strips the injected LaTeX content.)
         return self._finalize_response(
             query=q,
             answer_text=answer_text,
@@ -464,6 +872,84 @@ class EnhancedRAGSystem:
             mode=mode,
             include_sources=include_sources,
         )
+
+    @staticmethod
+    def _normalize_latex(latex: str) -> str:
+        """Fix common invalid LaTeX commands the VLM sometimes emits."""
+        if not latex:
+            return latex
+        # \softmax / \argmax etc. are not real commands → wrap as \text{} / \operatorname
+        for op in ["softmax", "argmax", "argmin", "softplus", "relu", "sigmoid"]:
+            latex = re.sub(rf"\\{op}\b", rf"\\text{{{op}}}", latex)
+        return latex.strip()
+
+    def _ensure_equation_latex_in_answer(self, answer_text: str, equations: List[Dict[str, Any]]) -> str:
+        """Guarantee the clean equation LaTeX appears as a $$...$$ block in the answer.
+        Replaces empty, truncated, or garbled display blocks with the stored LaTeX."""
+        eq = equations[0] if equations else None
+        if not eq:
+            return answer_text
+        latex = self._normalize_latex(eq.get("latex") or eq.get("normalized_latex") or "")
+        if not latex or len(latex) < 6:
+            return answer_text
+        block = f"$$\n{latex}\n$$"
+        text = answer_text or ""
+
+        # Find existing display block(s)
+        existing = re.search(r"\$\$(.+?)\$\$", text, re.S)
+        if existing:
+            inner = existing.group(1).strip()
+            # Replace if empty, too short, or looks truncated (no = sign but stored has one,
+            # or significantly shorter than stored LaTeX)
+            stored_has_eq = "=" in latex
+            inner_has_eq = "=" in inner
+            is_truncated = (
+                len(inner) < 4
+                or (stored_has_eq and not inner_has_eq)
+                or len(inner) < len(latex) * 0.4
+                or re.match(r"^\s*[/\\]", inner)  # starts mid-expression
+            )
+            if is_truncated:
+                return text[:existing.start()] + block + text[existing.end():]
+            return text
+
+        # No display block at all — prepend
+        label = eq.get("label") or f"Equation {eq.get('global_number', '')}".strip()
+        return f"**{label}**\n\n{block}\n\n{text}".strip()
+
+    @staticmethod
+    def _looks_like_markdown_table(text: str) -> bool:
+        """A real markdown table = a header row, a separator row, and data rows,
+        each on its OWN line (not inlined mid-paragraph)."""
+        lines = [ln for ln in (text or "").splitlines() if ln.strip().startswith("|")]
+        if len(lines) < 3:
+            return False
+        return any(re.match(r"^\s*\|[\s:\-\|]+\|\s*$", ln) for ln in lines)
+
+    def _ensure_table_markdown_in_answer(self, answer_text: str, tables: List[Dict[str, Any]]) -> str:
+        """Guarantee a clean, separated markdown table block in the answer.
+        Replaces prose-inlined '| a | b |' pipe-text with the real vision-extracted table."""
+        tb = tables[0] if tables else None
+        if not tb:
+            return answer_text
+        md = (tb.get("markdown") or "").strip()
+        # The table must itself be a valid multi-line markdown table to be trustworthy
+        if not md or not self._looks_like_markdown_table(md):
+            return answer_text
+
+        label = tb.get("caption") or tb.get("label") or f"Table {tb.get('global_number','')}".strip()
+        text = answer_text or ""
+
+        if self._looks_like_markdown_table(text):
+            return text  # the model already produced a proper table — leave it
+
+        # Strip any inlined pipe-text fragments the model glued into prose,
+        # then present the clean table block with a short lead-in.
+        text_no_pipes = re.sub(r"\|[^\n]*\|", "", text)
+        text_no_pipes = re.sub(r"[ \t]{2,}", " ", text_no_pipes)
+        text_no_pipes = re.sub(r"\n{3,}", "\n\n", text_no_pipes).strip()
+        lead = text_no_pipes if text_no_pipes else f"Here is **{label}**:"
+        return f"{lead}\n\n{md}".strip()
 
     def _finalize_response(
         self,
@@ -491,9 +977,46 @@ class EnhancedRAGSystem:
             document_metadata=self.current_document.metadata,
         )
 
+        # Deduplicate sources list (same page/label appearing multiple times)
+        raw_sources = formatted.get("citations", [])
+        seen_sources: set = set()
+        deduped_sources: list = []
+        for s in raw_sources:
+            key = str(s).strip().lower() if isinstance(s, str) else str(s.get("page", s))
+            if key not in seen_sources:
+                seen_sources.add(key)
+                deduped_sources.append(s)
+
+        final_answer = formatted.get("summary_text", answer_text)
+        ql = (query or "").lower()
+
+        # FINAL equation guard — runs AFTER the formatter (which can strip LaTeX
+        # content out of $$...$$ leaving empty blocks). Re-injects clean LaTeX.
+        # Only fires when the user explicitly asks for a formula/equation — not
+        # when the answer merely discusses a concept that has an associated equation.
+        out_equations = formatted.get("equations", []) or equations
+        _explicitly_asks_for_equation = (
+            re.search(r"\b(equation|formula|latex|derive|derivation)\b", ql)
+            and not re.search(r"\b(about|role|purpose|significance|importance|how does|why)\b", ql)
+        ) or re.search(r"\bshow\s+(me\s+)?(?:the\s+)?(?:equation|formula)\b", ql)
+        if out_equations and _explicitly_asks_for_equation:
+            final_answer = self._ensure_equation_latex_in_answer(final_answer, out_equations)
+
+        # FINAL table guard — the small generation model frequently drops the
+        # leftmost label column and inlines table rows as running prose. When this
+        # is a table query and we hold a clean (vision-extracted) markdown table,
+        # guarantee it renders as a real, separated markdown table block.
+        out_tables = formatted.get("tables", []) or tables
+        if out_tables and any(k in ql for k in ["table", "score", "result", "performance", "compare", "benchmark"]):
+            final_answer = self._ensure_table_markdown_in_answer(final_answer, out_tables)
+
+        # FINAL cleanup pass — runs AFTER all guards and injection, catches any
+        # stray $ or broken LaTeX that was introduced by the guards themselves
+        final_answer = self.response_formatter._math_fallback_cleanup(final_answer)
+
         return {
-            "answer": formatted.get("summary_text", answer_text),
-            "sources": formatted.get("citations", []),
+            "answer": final_answer,
+            "sources": deduped_sources,
             "equations": formatted.get("equations", []),
             "tables": formatted.get("tables", []),
             "figures": formatted.get("figures", []),
@@ -612,8 +1135,9 @@ class EnhancedRAGSystem:
 
     def _retrieve_context(self, query: str) -> List[Any]:
         results: List[Any] = []
-        seen_ids = set()
+        seen_ids: set = set()
         variants = self._build_query_variants(query)
+        fetch_k = max(self.config.top_k * 3, 18)
 
         def add_items(items: List[Any]):
             for item in items or []:
@@ -624,21 +1148,31 @@ class EnhancedRAGSystem:
                 if chunk_id:
                     seen_ids.add(chunk_id)
                 results.append(item)
-                if len(results) >= max(self.config.top_k * 2, self.config.top_k):
+                if len(results) >= fetch_k:
                     break
 
+        # Stage 1: Multi-query hybrid search (broad recall)
         try:
             if self.config.use_multiquery and hasattr(self.vector_store, "multi_query_hybrid_search"):
-                add_items(self.vector_store.multi_query_hybrid_search(variants, top_k=max(self.config.top_k * 2, self.config.top_k)))
+                add_items(self.vector_store.multi_query_hybrid_search(variants, top_k=fetch_k))
             else:
-                add_items(self.vector_store.search(query=query, top_k=max(self.config.top_k * 2, self.config.top_k)))
+                add_items(self.vector_store.search(query=query, top_k=fetch_k))
         except Exception as e:
             logger.warning("Vector store search failed: %s", e)
 
+        # Stage 2: Parent-child expansion for broader page context
+        try:
+            if hasattr(self.vector_store, "parent_child_search"):
+                parent_results = self.vector_store.parent_child_search(query=query, top_k=self.config.top_k, child_k=fetch_k)
+                add_items(parent_results)
+        except Exception as e:
+            logger.warning("Parent-child search failed: %s", e)
+
+        # Stage 3: SmartRetriever (intent-based fallback)
         try:
             smart = self.smart_retriever.retrieve(
                 query=query,
-                top_k=max(self.config.top_k * 2, self.config.top_k),
+                top_k=fetch_k,
                 use_hybrid=True,
                 query_variants=variants,
             )
@@ -649,8 +1183,16 @@ class EnhancedRAGSystem:
         except Exception as e:
             logger.warning("SmartRetriever fallback failed: %s", e)
 
+        # Stage 4: Page-text lexical fallback
         if not results:
             add_items(self._page_text_retrieval_fallback(query))
+
+        # Stage 5: Rerank all candidates and return top_k
+        try:
+            if hasattr(self.vector_store, "rerank") and results:
+                results = self.vector_store.rerank(query=query, results=results, top_k=self.config.top_k)
+        except Exception as e:
+            logger.warning("Reranking failed, returning unranked: %s", e)
 
         return results[: self.config.top_k]
 
@@ -678,24 +1220,6 @@ class EnhancedRAGSystem:
                 add(term)
                 add(f"{term} definition")
                 add(f"what is {term}")
-
-        if "retrieval supervision" in ql and "fever" in ql:
-            add("retrieval supervision FEVER classification both RAG models are equivalent")
-            add("FEVER classiﬁcation task both RAG models are equivalent")
-
-        if "marginalization" in ql or "latent documents" in ql:
-            add("marginalize over retrieved documents latent variable z")
-            add("RAG-Sequence marginalization top-k retrieved documents")
-
-        if "orqa" in ql:
-            add("ORQA baseline open-domain qa")
-        if "curatedtrec" in ql or "curated trec" in ql:
-            add("CuratedTrec dataset open-domain qa")
-
-        if "rag-token" in ql or "rag token" in ql:
-            add("RAG-Token equation performance explanation")
-        if "rag-sequence" in ql or "rag sequence" in ql:
-            add("RAG-Sequence equation performance explanation")
 
         return variants[:6]
 
@@ -741,8 +1265,8 @@ class EnhancedRAGSystem:
         is_all_table = self._is_all_request(q, "table")
         is_all_figure = self._is_all_request(q, "figure")
 
-        is_eq = any(k in q for k in ["equation", "formula", "probability", "definition", "mips", "p_eta", "pη", "rag-token", "rag token", "rag-sequence", "rag sequence", "encoder", "latent"]) or self._is_explanation_query(q)
-        is_table = any(k in q for k in ["table", "result", "results", "score", "scores", "benchmark", "performance", "dataset", "evaluation", "triviaqa", "fever", "msmarco", "jeopardy", "nq", "wq", "baseline", "compare", "comparison", "ablation"])
+        is_eq = any(k in q for k in ["equation", "formula", "derivation", "derive"]) or self._is_explanation_query(q)
+        is_table = any(k in q for k in ["table", "result", "results", "score", "scores", "benchmark", "performance", "dataset", "evaluation", "baseline", "compare", "comparison", "ablation"])
         is_figure = any(k in q for k in ["figure", "diagram", "architecture", "overview", "pipeline", "framework", "model", "system"])
 
         selected_eqs: List[Dict[str, Any]] = []
@@ -785,6 +1309,7 @@ class EnhancedRAGSystem:
     ) -> str:
         lines: List[str] = []
 
+        # Include up to top_k retrieved text chunks — use full chunk text (up to 2200 chars)
         for item in retrieved_chunks[: max(self.config.top_k, 4)]:
             chunk = getattr(item, "chunk", item)
             text = getattr(chunk, "text", "")
@@ -792,29 +1317,40 @@ class EnhancedRAGSystem:
             if text:
                 text = re.sub(r"\s+", " ", text).strip()
                 if isinstance(page_num, int):
-                    lines.append(f"[Page {page_num + 1}] {text[:1500]}")
+                    lines.append(f"[Page {page_num + 1}] {text[:2200]}")
                 else:
-                    lines.append(text[:1500])
+                    lines.append(text[:2200])
 
+        # Append equation blocks with LaTeX AND surrounding context for variable definitions
         for eq in equations:
             label = eq.get("label") or f"Equation {eq.get('global_number', '?')}"
             page = eq.get("page_number", "?")
-            raw = eq.get("raw_text") or eq.get("text") or ""
+            latex = eq.get("latex") or eq.get("normalized_latex") or eq.get("raw_text") or eq.get("text") or ""
             desc = eq.get("description") or ""
-            lines.append(f"[{label} | Page {page}] {raw}")
+            context = eq.get("context") or ""
+            lines.append(f"[{label} | Page {page} | LaTeX] $${latex}$$")
             if desc:
                 lines.append(f"[{label} description] {desc}")
+            if context:
+                lines.append(f"[{label} surrounding text] {context[:400]}")
 
+        # Append full table markdown — never truncate mid-row so cell values remain intact
         for tb in tables:
             label = tb.get("caption") or f"Table {tb.get('global_number', '?')}"
             page = tb.get("page_number", "?")
-            raw = tb.get("raw_text") or tb.get("markdown") or ""
-            lines.append(f"[{label} | Page {page}] {raw[:1800]}")
+            # Prefer markdown (preserves column alignment) over raw_text
+            md = tb.get("markdown") or tb.get("raw_text") or ""
+            lines.append(f"[{label} | Page {page}]\n{md}")
 
         for fig in figures:
             label = fig.get("caption") or f"Figure {fig.get('global_number', '?')}"
             page = fig.get("page_number", "?")
-            lines.append(f"[{label} | Page {page}] {fig.get('caption', '')}")
+            # Include VLM-generated description OR caption
+            vlm_desc = fig.get("vlm_description", "") or fig.get("description", "")
+            if vlm_desc and "caption only" not in vlm_desc:
+                lines.append(f"[{label} | Page {page}]\nVisual content: {vlm_desc}")
+            else:
+                lines.append(f"[{label} | Page {page}] {fig.get('caption', '')}")
 
         if self._is_summary_query(query.lower()):
             abstract = (self.current_document.metadata or {}).get("abstract", "")
@@ -839,15 +1375,28 @@ class EnhancedRAGSystem:
         if not self.client:
             return self._fallback_grounded_answer(query, [], equations, tables, figures)
 
+        # Build status header for system awareness
+        assets_ready = bool(tables or equations or figures)
+        status_header = f"[STATUS: Text Ready | Assets {'Ready' if assets_ready else 'Pending'}]"
+
         system_prompt = self._build_system_prompt(query)
         user_prompt = (
+            f"{status_header}\n\n"
             f"Question:\n{query}\n\n"
             f"Document context:\n{context_text}\n\n"
-            "Answer using only the document context. "
-            "When the user asks to explain an equation, explain it in plain language instead of only naming it. "
-            "When the user asks about a term, dataset, or acronym, use the nearby sentence from the paper if available. "
-            "If the information is not present in the context, say exactly: \"The document does not contain this information.\""
+            "INSTRUCTIONS:\n"
+            "1. Answer ONLY from the document context above. Never use external knowledge.\n"
+            "2. When asked to explain an equation, explain each variable in plain language.\n"
+            "3. When asked about a table, reproduce the FULL markdown table from context — never summarize cells.\n"
+            "4. When asked about a figure, describe what it shows based on the visual description in context.\n"
+            "5. If the document context contains relevant information, you MUST use it — never say 'cannot find' when data IS in the context.\n"
+            "6. ONLY if the topic is completely absent from the context above, respond with:\n"
+            "   \"I cannot find this specific data in the provided context.\"\n"
         )
+
+        # Dynamic max_tokens: tables need more room for full markdown output
+        is_table_query = any(k in query.lower() for k in ["table", "score", "result", "compare", "benchmark"])
+        max_tok = 1024 if is_table_query else 600
 
         try:
             completion = self.client.chat.completions.create(
@@ -857,7 +1406,7 @@ class EnhancedRAGSystem:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.1,
-                max_tokens=700,
+                max_tokens=max_tok,
             )
             return (completion.choices[0].message.content or "").strip()
         except Exception as e:
@@ -867,39 +1416,79 @@ class EnhancedRAGSystem:
     def _build_system_prompt(self, query: str) -> str:
         q = query.lower()
         if self._is_all_request(q, "equation"):
-            asset_instruction = "Include all extracted equations."
+            asset_instruction = "Include all extracted equations in LaTeX display format ($$...$$)."
         elif self._is_all_request(q, "table"):
-            asset_instruction = "Include all extracted tables."
+            asset_instruction = "Include all extracted tables in full Markdown format."
         elif self._is_all_request(q, "figure"):
-            asset_instruction = "Include all extracted figures."
-        elif any(k in q for k in ["equation", "formula", "probability", "mips", "definition", "explain", "why", "how"]):
-            asset_instruction = "If an equation is relevant, use the single most relevant equation and explain its role in plain language."
-        elif any(k in q for k in ["result", "results", "score", "benchmark", "dataset", "performance", "table", "compare", "comparison"]):
-            asset_instruction = "If a table is relevant, use the most relevant table and summarize the key result."
+            asset_instruction = "Include all extracted figures with their captions."
+        elif any(k in q for k in ["equation", "formula", "definition", "explain", "why", "how"]):
+            asset_instruction = (
+                "Use the single most relevant equation and explain its role. "
+                "Render all math—including Greek letters (α β γ δ λ μ σ θ ε), "
+                "subscripts/superscripts, and operators—in LaTeX: $inline$ or $$display$$."
+            )
+        elif any(k in q for k in ["result", "results", "score", "scores", "benchmark", "dataset",
+                                  "performance", "table", "compare", "comparison",
+                                  "accuracy"]):
+            asset_instruction = (
+                "Use the most relevant table in full Markdown format. "
+                "Report exact numeric values from the table cells — never round or guess. "
+                "If a value is not present in the table, say \"I cannot find this specific data "
+                "in the provided context\" rather than estimating."
+            )
         elif any(k in q for k in ["figure", "diagram", "architecture", "overview", "pipeline", "model"]):
-            asset_instruction = "If a figure is relevant, use the most relevant figure and explain what it shows."
+            asset_instruction = "Use the most relevant figure and explain what it shows."
         else:
             asset_instruction = "Do not include unrelated equations, tables, or figures."
 
         return f"""
-You are a scientific document assistant specialized in analyzing research papers.
+You are a PhD-level research assistant capable of analysing research papers across ALL domains.
 
-Rules:
-1. Use only the provided document context.
-2. If the information is not present, answer exactly:
-   "The document does not contain this information."
-3. Be concise, accurate, and grounded.
-4. Prefer 2 short paragraphs or 3 concise bullet-style lines inside normal prose.
-5. Include at least one citation in the form:
-   (Source: Page X)
-   (Source: Table N)
-   (Source: Figure N)
-   (Source: Equation N)
-6. {asset_instruction}
-7. Do not output raw LaTeX in the explanation.
-8. Do not repeat the same equation multiple times.
-9. For explain/why/how questions, explain the idea, not only the label.
-10. For summary/contribution questions, synthesize from abstract + results if available.
+TABLE RECONSTRUCTION RULE:
+- When extracting tables, output them in perfectly formatted Markdown tables.
+- If a table spans multiple lines in the PDF, logically reconstruct it into a single clean Markdown table with aligned columns.
+- Preserve every cell value exactly — never round, merge, or omit data.
+
+EQUATION FORMATTING RULE:
+- For mathematical equations, always use $...$ (inline) or $$...$$ (display) LaTeX syntax.
+- Ensure all variables are clearly defined after each equation.
+- Greek letters must use LaTeX commands (\\alpha, \\beta, etc.), never bare Unicode.
+
+ANTI-FIXATION RULE:
+- Do NOT reuse structural names (e.g., "Equation 1", "Table 2") from prior turns or generic assumptions.
+- Only reference an element by its label if that EXACT label appears in the CURRENTLY provided context.
+- Inspect table headers and column boundaries carefully to map facts accurately.
+
+CORE RULES (strictly enforced — violation is a critical failure):
+1. Answer strictly from the provided document context. Do NOT use external knowledge.
+2. If the SPECIFIC information requested is NOT EXPLICITLY STATED in the context:
+   - If a partial description exists (text mentions the topic without exact values), explain what the document DOES say.
+   - If the topic is COMPLETELY ABSENT from the context, respond with ONLY:
+     "I cannot find this specific data in the provided context."
+     Do NOT add any other sentences. Do NOT offer alternative data. Do NOT say "however" or "instead".
+   Never guess, approximate, extrapolate, or fabricate numerical values.
+3. Cite your source for every factual claim using:
+   (Source: Page X) | (Source: Table N) | (Source: Equation N) | (Source: Figure N)
+
+MATH & EQUATION FORMATTING (mandatory):
+4. Render ALL mathematical content in valid LaTeX:
+   - Inline math: $symbol$ or $expression$
+   - Display math: $$full equation$$
+   - Greek letters MUST use LaTeX commands: \\alpha, \\beta, \\gamma, etc. — never bare Unicode.
+5. When context contains a LaTeX block ($$...$$), reproduce it exactly as given.
+
+TABLE RULES:
+6. When answering about table data, reproduce the exact markdown table from context.
+   Do not summarise cell values — show the actual numbers/strings from the table.
+7. If the user asks for a specific metric and it appears in a table column, quote the exact cell value and table number.
+
+{asset_instruction}
+
+FORMATTING STYLE:
+- Use **bold** for key terms, headings, and important values.
+- Use bullet lists when listing multiple points.
+- Keep prose responses to ≤ 3 concise paragraphs.
+- Do not repeat the same equation or table row more than once.
 """.strip()
 
     def _fallback_grounded_answer(
@@ -930,7 +1519,7 @@ Rules:
             if direct:
                 return direct
 
-        if any(k in q for k in ["equation", "formula", "probability", "mips", "p_eta", "pη", "p_theta", "pθ", "rag-token", "rag token", "rag-sequence", "rag sequence"]):
+        if any(k in q for k in ["equation", "formula", "derivation", "derive"]):
             if equations:
                 eq = equations[0]
                 desc = self.response_formatter._infer_equation_explanation(eq)

@@ -9,6 +9,8 @@ export interface WorkspaceFile {
   file_type: string;
   size_bytes: number;
   storage_path: string;
+  session_id: string;
+  url: string;
   uploaded_at: string;
   updated_at: string;
 }
