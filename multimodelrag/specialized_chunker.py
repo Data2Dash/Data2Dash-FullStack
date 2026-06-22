@@ -119,6 +119,8 @@ Section: {section or equation.section}
         metadata = {
             'global_number': equation.global_number,
             'equation_id': equation.equation_id,
+            'type': 'equation',
+            'equation_number': str(equation.global_number),
             'section': section or equation.section,
             'page_num': equation.page_number,
             'latex': equation.latex or equation.text,
@@ -188,6 +190,8 @@ Structure: {table_structure['rows']} rows × {table_structure['cols']} columns
         metadata = {
             'global_number': table.global_number,
             'table_id': table.table_id,
+            'type': 'table',
+            'table_number': str(table.global_number),
             'caption': table.caption,
             'section': section or table.section,
             'page_num': table.page_number,
@@ -231,9 +235,9 @@ Structure: {table_structure['rows']} rows × {table_structure['cols']} columns
             figure, page_text, strategy.context_window
         )
         
-        # بناء نص الـ chunk
         chunk_text = f"""
 [FIGURE {figure.global_number}]
+Figure {figure.global_number} Fig. {figure.global_number} Fig {figure.global_number}
 
 Caption: {figure.caption}
 
@@ -243,17 +247,19 @@ Context: {context}
 
 Section: {section or figure.section}
 """.strip()
-        
+
         metadata = {
             'global_number': figure.global_number,
             'figure_id': figure.figure_id,
+            'type': 'figure',
+            'figure_number': str(figure.global_number),
             'caption': figure.caption,
             'section': section or figure.section,
             'page_num': figure.page_number,
             'has_image': bool(figure.saved_path),
             'image_path': figure.saved_path,
             'visual_score': figure.visual_content_score,
-            'context': context[:200],
+            'context': context[:400],
             'content_priority': strategy.priority_boost,
             'bbox': figure.bbox,
             'chunk_type': 'figure'
@@ -423,15 +429,43 @@ Section: {section or figure.section}
     def _extract_context_around_figure(
         self, figure: ProcessedFigure, page_text: str, window: int
     ) -> str:
-        """استخراج السياق المحيط بالصورة"""
+        """Extract caption + paragraphs before and after the figure reference."""
         lines = page_text.split('\n')
-        
+        context_parts = []
+
+        caption_prefix = (figure.caption or "")[:30]
+        fig_num = figure.global_number
+        fig_ref_patterns = [
+            f"Figure {fig_num}",
+            f"Fig. {fig_num}",
+            f"Fig {fig_num}",
+            f"figure {fig_num}",
+        ]
+
+        caption_idx = None
         for i, line in enumerate(lines):
-            if figure.caption[:30] in line:
-                start = max(0, i - window)
-                end = min(len(lines), i + window + 1)
-                return ' '.join(lines[start:end])
-        
+            if caption_prefix and caption_prefix in line:
+                caption_idx = i
+                break
+
+        if caption_idx is not None:
+            expanded_window = max(window, 5)
+            start = max(0, caption_idx - expanded_window)
+            end = min(len(lines), caption_idx + expanded_window + 1)
+            context_parts.append(' '.join(lines[start:end]))
+
+        for i, line in enumerate(lines):
+            if i == caption_idx:
+                continue
+            if any(ref in line for ref in fig_ref_patterns):
+                start = max(0, i - 2)
+                end = min(len(lines), i + 3)
+                para = ' '.join(lines[start:end])
+                if para not in context_parts:
+                    context_parts.append(para)
+
+        if context_parts:
+            return ' '.join(context_parts)[:800]
         return page_text[:500]
     
     def _extract_variables(self, text: str) -> List[str]:

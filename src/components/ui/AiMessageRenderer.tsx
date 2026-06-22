@@ -22,7 +22,7 @@ import 'katex/dist/katex.min.css';
 import { codeComponents } from './CodeBlock';
 import { cleanTableMarkdown } from '../../utils/tableUtils';
 import { normalizeEquations } from '../../utils/mathUtils';
-import { Copy, Check, Hash, Table2 } from 'lucide-react';
+import { Copy, Check, Hash, Table2, ChevronDown, ChevronUp } from 'lucide-react';
 
 // ─── Equation Block ───────────────────────────────────────────────────────────
 
@@ -111,50 +111,107 @@ export interface TableData {
   caption?: string;
   markdown?: string;
   raw_text?: string;
+  html_table?: string;
   page_number?: number;
+  description?: string;
+  section?: string;
 }
 
 function TableBlock({ tb }: { tb: TableData }) {
+  const [showRaw, setShowRaw] = useState(false);
   const label = tb.label ?? `Table ${tb.global_number ?? '?'}`;
-  const caption = tb.caption ?? label;
-  const md = tb.markdown ?? '';
+  const caption = tb.caption ?? '';
+  const md = cleanTableMarkdown(tb.markdown ?? '');
   const raw = tb.raw_text ?? '';
 
   return (
     <div className="my-4 rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-teal-50 overflow-hidden shadow-sm table-block-hover">
-      {/* Header */}
+      {/* Header bar */}
       <div className="flex items-center gap-2 px-4 py-2 bg-emerald-100/60 border-b border-emerald-200/50">
-        <div className="h-5 w-5 rounded-md bg-emerald-600 flex items-center justify-center">
+        <div className="h-5 w-5 rounded-md bg-emerald-600 flex items-center justify-center shrink-0">
           <Table2 className="h-3 w-3 text-white" />
         </div>
-        <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">
+        <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide shrink-0">
           {label}
         </span>
-        {caption && caption !== label && (
-          <span className="text-xs text-emerald-600 font-medium truncate">
-            — {caption}
+        {tb.section && (
+          <span className="text-[10px] text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200/40 truncate max-w-[160px]">
+            {tb.section}
           </span>
         )}
-        {tb.page_number != null && (
-          <span className="ml-auto text-[10px] font-semibold text-emerald-400 bg-emerald-100 px-1.5 py-0.5 rounded-full shrink-0">
-            p. {tb.page_number}
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          {raw && (
+            <button
+              onClick={() => setShowRaw(!showRaw)}
+              className="flex items-center gap-1 text-[10px] font-medium text-emerald-500 hover:text-emerald-700 transition-colors px-1.5 py-0.5 rounded-lg hover:bg-emerald-100"
+              title={showRaw ? 'Show formatted' : 'Show raw data'}
+            >
+              {showRaw ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+              <span>{showRaw ? 'Formatted' : 'Raw'}</span>
+            </button>
+          )}
+          {tb.page_number != null && (
+            <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+              p. {tb.page_number}
+            </span>
+          )}
+        </div>
       </div>
-      {/* Body */}
+
+      {/* Caption */}
+      {caption && caption !== label && (
+        <div className="px-4 pt-2.5 pb-0">
+          <p className="text-xs font-medium text-emerald-700 italic leading-relaxed">{caption}</p>
+        </div>
+      )}
+
+      {/* Table body */}
       <div className="px-4 py-3 overflow-x-auto">
-        {md ? (
-          <div className="prose prose-sm max-w-none prose-table:rounded-xl">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={codeComponents}>
+        {showRaw ? (
+          <pre className="text-[11px] text-slate-600 overflow-x-auto whitespace-pre-wrap font-mono bg-white/60 rounded-lg p-3 border border-emerald-100 leading-relaxed">
+            {raw}
+          </pre>
+        ) : md ? (
+          <div className="table-enhanced prose prose-sm max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                ...codeComponents,
+                table: ({ children, ...props }) => (
+                  <table className="w-full border-collapse text-xs" {...props}>{children}</table>
+                ),
+                thead: ({ children, ...props }) => (
+                  <thead className="bg-emerald-100/80" {...props}>{children}</thead>
+                ),
+                th: ({ children, ...props }) => (
+                  <th className="text-left text-emerald-900 font-bold text-[11px] px-3 py-2 border border-emerald-200/60 whitespace-nowrap" {...props}>{children}</th>
+                ),
+                td: ({ children, ...props }) => (
+                  <td className="text-stone-700 text-[11px] px-3 py-1.5 border border-emerald-200/40 whitespace-nowrap tabular-nums" {...props}>{children}</td>
+                ),
+                tr: ({ children, ...props }) => (
+                  <tr className="even:bg-emerald-50/40 hover:bg-emerald-100/30 transition-colors" {...props}>{children}</tr>
+                ),
+              }}
+            >
               {md}
             </ReactMarkdown>
           </div>
         ) : raw ? (
-          <pre className="text-xs text-slate-700 overflow-x-auto whitespace-pre-wrap font-mono">
+          <pre className="text-[11px] text-slate-600 overflow-x-auto whitespace-pre-wrap font-mono bg-white/60 rounded-lg p-3 border border-emerald-100">
             {raw}
           </pre>
         ) : null}
       </div>
+
+      {/* Description / context note */}
+      {tb.description && (
+        <div className="px-4 pb-3 pt-0">
+          <p className="text-[11px] text-emerald-600/80 leading-relaxed border-t border-emerald-200/30 pt-2">
+            {tb.description}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

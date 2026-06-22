@@ -234,6 +234,11 @@ class PDFChatRequest(BaseModel):
     query: str
     session_id: str
 
+class ElementSearchRequest(BaseModel):
+    session_id: str
+    query: str
+    element_type: Optional[str] = None  # "table", "equation", "figure", "section", "keyword" or None for all
+
 class PDFListResponse(BaseModel):
     files: List[str]
 
@@ -799,6 +804,150 @@ async def get_session_asset_status(session_id: str):
     return system.get_asset_status()
 
 
+@app.post("/api/pdf/search-elements")
+async def search_paper_elements(request: ElementSearchRequest):
+    """Search for specific elements (tables, equations, figures, sections, keywords) inside a paper."""
+    agent = get_pdf_agent()
+    if request.session_id not in agent.systems:
+        raise HTTPException(status_code=404, detail="Session not found. Please upload or import a paper first.")
+
+    system = agent.systems[request.session_id]
+    doc = getattr(system, "current_document", None)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="No document loaded in this session.")
+
+    q = request.query.lower().strip()
+    results = []
+
+    def _score(text: str) -> float:
+        if not text:
+            return 0.0
+        tl = text.lower()
+        if q in tl:
+            return 2.0
+        terms = q.split()
+        return sum(1.0 for t in terms if t in tl) / max(len(terms), 1)
+
+    def _get_page_context(page_num: int, max_chars: int = 400) -> str:
+        if not page_num or not hasattr(doc, "pages") or not doc.pages:
+            return ""
+        for p in doc.pages:
+            if getattr(p, "page_number", None) == page_num:
+                text = getattr(p, "text", "") or ""
+                return text[:max_chars].strip() + ("..." if len(text) > max_chars else "")
+        return ""
+
+    # Tables
+    if request.element_type in (None, "table"):
+        for tb in getattr(doc, "tables", []) or []:
+            num = getattr(tb, "global_number", None)
+            caption = getattr(tb, "caption", "") or ""
+            md = getattr(tb, "markdown", "") or ""
+            raw = getattr(tb, "raw_text", "") or ""
+            section = getattr(tb, "section", "") or ""
+            page = getattr(tb, "page_number", None)
+
+            num_match = f"table {num}" == q or f"table{num}" == q if num else False
+            text_score = max(_score(caption), _score(raw), _score(section))
+            if num_match or text_score > 0.3:
+                results.append({
+                    "type": "table",
+                    "label": f"Table {num}" if num else "Table",
+                    "page_number": page,
+                    "section": section,
+                    "caption": caption,
+                    "markdown": md,
+                    "raw_text": raw,
+                    "context": _get_page_context(page),
+                    "score": 10.0 if num_match else text_score,
+                })
+
+    # Equations
+    if request.element_type in (None, "equation"):
+        for eq in getattr(doc, "equations", []) or []:
+            num = getattr(eq, "global_number", None)
+            latex = getattr(eq, "latex", "") or ""
+            text = getattr(eq, "text", "") or ""
+            section = getattr(eq, "section", "") or ""
+            ctx = getattr(eq, "context", "") or ""
+            page = getattr(eq, "page_number", None)
+
+            num_match = (f"equation {num}" == q or f"eq {num}" == q or f"equation{num}" == q) if num else False
+            text_score = max(_score(latex), _score(text), _score(section), _score(ctx))
+            if num_match or text_score > 0.3:
+                results.append({
+                    "type": "equation",
+                    "label": f"Equation {num}" if num else "Equation",
+                    "page_number": page,
+                    "section": section,
+                    "latex": latex,
+                    "normalized_latex": getattr(eq, "normalized_latex", latex),
+                    "raw_text": text,
+                    "context": ctx or _get_page_context(page),
+                    "score": 10.0 if num_match else text_score,
+                })
+
+    # Figures
+    if request.element_type in (None, "figure"):
+        for fig in getattr(doc, "figures", []) or []:
+            num = getattr(fig, "global_number", None)
+            caption = getattr(fig, "caption", "") or ""
+            desc = getattr(fig, "description", "") or getattr(fig, "_vlm_description", "") or ""
+            section = getattr(fig, "section", "") or ""
+            page = getattr(fig, "page_number", None)
+            img_path = getattr(fig, "image_path", "") or ""
+
+            num_match = (f"figure {num}" == q or f"fig {num}" == q or f"figure{num}" == q) if num else False
+            text_score = max(_score(caption), _score(desc), _score(section))
+            if num_match or text_score > 0.3:
+                img_url = ""
+                if img_path and os.path.exists(img_path):
+                    rel = img_path.replace("\\", "/")
+                    if "data/" in rel:
+                        rel = rel[rel.index("data/"):]
+                    img_url = f"{BACKEND_URL}/api/uploads/{'/'.join(rel.split('/')[2:])}"
+
+                results.append({
+                    "type": "figure",
+                    "label": f"Figure {num}" if num else "Figure",
+                    "page_number": page,
+                    "section": section,
+                    "caption": caption,
+                    "description": desc,
+                    "image_url": img_url,
+                    "context": _get_page_context(page),
+                    "score": 10.0 if num_match else text_score,
+                })
+
+    # Sections / Keywords — search through text chunks
+    if request.element_type in (None, "section", "keyword"):
+        chunks = getattr(system, "current_chunks", []) or []
+        for chunk in chunks:
+            text = getattr(chunk, "text", "") or ""
+            meta = getattr(chunk, "metadata", {}) or {}
+            page = meta.get("page_number") or meta.get("page")
+            section = meta.get("section", "")
+            score = _score(text)
+            if score > 0.5:
+                snippet = text[:600].strip()
+                results.append({
+                    "type": "section" if request.element_type == "section" else "keyword",
+                    "label": section or f"Page {page}" if page else "Text",
+                    "page_number": page,
+                    "section": section or "",
+                    "text": snippet + ("..." if len(text) > 600 else ""),
+                    "score": score,
+                })
+
+    results.sort(key=lambda r: r.get("score", 0), reverse=True)
+    results = results[:20]
+
+    for r in results:
+        r.pop("score", None)
+
+    return {"results": results, "total": len(results)}
+
+
 @app.post("/api/pdf/upload", status_code=202)
 async def upload_pdf(
     file: UploadFile = File(...),
@@ -1122,21 +1271,38 @@ def ensure_pdf_exists(pdf_path: str, pdf_url: Optional[str]):
         if pdf_url:
             try:
                 os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-                
-                # Setup session with retry logic
+
                 session = requests.Session()
-                retry = Retry(connect=3, backoff_factor=0.5, status_forcelist=[ 500, 502, 503, 504 ])
+                retry = Retry(
+                    total=5,
+                    connect=3,
+                    backoff_factor=1.0,
+                    status_forcelist=[429, 500, 502, 503, 504],
+                    respect_retry_after_header=True,
+                )
                 adapter = HTTPAdapter(max_retries=retry)
                 session.mount('http://', adapter)
                 session.mount('https://', adapter)
-                
-                h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-                # Longer timeout to handle slow ArXiv responses
-                r = session.get(pdf_url, headers=h, timeout=30)
+
+                h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                r = session.get(pdf_url, headers=h, timeout=(15, 120), stream=True)
                 r.raise_for_status()
+
+                content_length = r.headers.get("Content-Length")
+                downloaded = 0
                 with open(pdf_path, 'wb') as f:
-                    f.write(r.content)
+                    for chunk in r.iter_content(chunk_size=256 * 1024):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+
+                if content_length and downloaded < int(content_length):
+                    os.remove(pdf_path)
+                    raise IOError(
+                        f"Incomplete download: got {downloaded} of {content_length} bytes"
+                    )
             except Exception as e:
+                if os.path.exists(pdf_path):
+                    os.remove(pdf_path)
                 raise HTTPException(status_code=400, detail=f"Failed to auto-download PDF from {pdf_url}. Error: {e}")
         else:
             raise HTTPException(status_code=404, detail=f"PDF file not found at {pdf_path} and no auto-download URL was provided.")
@@ -1340,30 +1506,48 @@ async def import_paper(
         file_path = os.path.join(upload_dir, filename)
 
         if is_arxiv:
-            import arxiv
-            client = arxiv.Client()
-            search = arxiv.Search(id_list=[raw_id])
+            arxiv_pdf_url = f"https://arxiv.org/pdf/{raw_id}.pdf"
             try:
-                result = next(client.results(search))
-                result.download_pdf(dirpath=upload_dir, filename=filename)
-            except StopIteration:
-                if request.pdf_url:
+                ensure_pdf_exists(file_path, arxiv_pdf_url)
+            except Exception:
+                if request.pdf_url and request.pdf_url != arxiv_pdf_url:
                     ensure_pdf_exists(file_path, request.pdf_url)
                 else:
-                    raise HTTPException(status_code=400, detail="Paper not found on ArXiv and no fallback PDF URL provided.")
+                    raise
         else:
             if request.pdf_url:
                 ensure_pdf_exists(file_path, request.pdf_url)
             else:
                 raise HTTPException(status_code=400, detail="Not an ArXiv ID and no PDF URL provided to download. Cannot index this paper.")
 
-        # Extract figures immediately
-        agent = get_vision_agent()
-        figure_paths = agent.extract_figures(file_path, request.session_id)
-
-        # Process with PDF agent for chat as well
+        # Stage 1: Fast text indexing so chat is usable immediately
         pdf_agent_inst = get_pdf_agent()
-        pdf_agent_inst.process_pdf_with_name(file_path, request.session_id, filename)
+        system = pdf_agent_inst.get_system(request.session_id)
+        system.process_document_text_first(file_path)
+        if request.session_id not in pdf_agent_inst.uploaded_files:
+            pdf_agent_inst.uploaded_files[request.session_id] = []
+        if filename not in pdf_agent_inst.uploaded_files[request.session_id]:
+            pdf_agent_inst.uploaded_files[request.session_id].append(filename)
+
+        # Stage 2: Heavy work (figures + asset extraction) in background thread
+        def _background_index(fp, sid, fn):
+            try:
+                vis = get_vision_agent()
+                vis.extract_figures(fp, sid)
+            except Exception as exc:
+                print(f"[IMPORT-BG] figure extraction failed (non-fatal): {exc}")
+            try:
+                system_bg = pdf_agent_inst.get_system(sid)
+                system_bg.process_document_assets()
+            except Exception as exc:
+                print(f"[IMPORT-BG] asset extraction failed (non-fatal): {exc}")
+
+        import threading
+        threading.Thread(
+            target=_background_index,
+            args=(file_path, request.session_id, filename),
+            daemon=True,
+        ).start()
 
         # Get file size
         file_size_bytes = os.path.getsize(file_path)
@@ -1392,9 +1576,8 @@ async def import_paper(
                 print(f"IMPORT DB WARNING: {db_err}")
 
         return {
-            "message": "Paper imported and processed successfully",
+            "message": "Paper imported and ready for chat. Figures and tables are being extracted in the background.",
             "filename": filename,
-            "figure_count": len(figure_paths),
             "pdf_url": f"{BACKEND_URL}/api/uploads/{request.session_id}/{filename}",
             "pdf_size": size_str,
         }

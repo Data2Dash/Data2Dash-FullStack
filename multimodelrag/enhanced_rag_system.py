@@ -1251,6 +1251,36 @@ class EnhancedRAGSystem:
     # Asset selection
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _extract_referenced_numbers(query: str, element_type: str) -> List[int]:
+        """Extract explicitly referenced element numbers from a query.
+        E.g. "tables 2 and 3" -> [2, 3], "figure 5a" -> [5], "equation 1" -> [1]
+        """
+        q = query.lower()
+        patterns = [
+            rf"{element_type}s?\s+(\d+)\s*(?:,|and|&)\s*(\d+)",
+            rf"{element_type}s?\s+(\d+)\s*(?:,|and|&)\s*(\d+)\s*(?:,|and|&)\s*(\d+)",
+            rf"{element_type}\s+(\d+[a-z]?)",
+        ]
+        numbers = []
+        for pat in patterns:
+            for m in re.finditer(pat, q, re.IGNORECASE):
+                for g in m.groups():
+                    if g:
+                        try:
+                            numbers.append(int(re.match(r"(\d+)", g).group(1)))
+                        except (ValueError, AttributeError):
+                            pass
+        return sorted(set(numbers))
+
+    def _select_by_numbers(
+        self, assets: List[Dict[str, Any]], numbers: List[int]
+    ) -> List[Dict[str, Any]]:
+        """Select assets whose global_number matches any of the requested numbers."""
+        if not numbers:
+            return []
+        return [a for a in assets if a.get("global_number") in numbers]
+
     def _boost_and_select_assets(
         self,
         query: str,
@@ -1269,29 +1299,44 @@ class EnhancedRAGSystem:
         is_table = any(k in q for k in ["table", "result", "results", "score", "scores", "benchmark", "performance", "dataset", "evaluation", "baseline", "compare", "comparison", "ablation"])
         is_figure = any(k in q for k in ["figure", "diagram", "architecture", "overview", "pipeline", "framework", "model", "system"])
 
+        # --- Equations ---
         selected_eqs: List[Dict[str, Any]] = []
         if is_all_eq:
             selected_eqs = all_equations
         elif is_eq:
-            best = self.response_formatter._pick_best_equation(q, all_equations)
-            if best:
-                selected_eqs = [best]
+            ref_nums = self._extract_referenced_numbers(query, "equation")
+            if ref_nums:
+                selected_eqs = self._select_by_numbers(all_equations, ref_nums)
+            if not selected_eqs:
+                best = self.response_formatter._pick_best_equation(q, all_equations)
+                if best:
+                    selected_eqs = [best]
 
+        # --- Tables (multi-table support) ---
         selected_tables: List[Dict[str, Any]] = []
         if is_all_table:
             selected_tables = all_tables
         elif is_table:
-            best_t = self.response_formatter._pick_best_table(q, all_tables)
-            if best_t:
-                selected_tables = [best_t]
+            ref_nums = self._extract_referenced_numbers(query, "table")
+            if ref_nums:
+                selected_tables = self._select_by_numbers(all_tables, ref_nums)
+            if not selected_tables:
+                best_t = self.response_formatter._pick_best_table(q, all_tables)
+                if best_t:
+                    selected_tables = [best_t]
 
+        # --- Figures (multi-figure support) ---
         selected_figures: List[Dict[str, Any]] = []
         if is_all_figure:
             selected_figures = all_figures
         elif is_figure:
-            best_f = self.response_formatter._pick_best_figure(q, all_figures)
-            if best_f:
-                selected_figures = [best_f]
+            ref_nums = self._extract_referenced_numbers(query, "figure")
+            if ref_nums:
+                selected_figures = self._select_by_numbers(all_figures, ref_nums)
+            if not selected_figures:
+                best_f = self.response_formatter._pick_best_figure(q, all_figures)
+                if best_f:
+                    selected_figures = [best_f]
 
         return selected_eqs, selected_tables, selected_figures
 
@@ -1398,20 +1443,41 @@ class EnhancedRAGSystem:
         is_table_query = any(k in query.lower() for k in ["table", "score", "result", "compare", "benchmark"])
         max_tok = 1024 if is_table_query else 600
 
-        try:
-            completion = self.client.chat.completions.create(
-                model=self.config.groq_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.1,
-                max_tokens=max_tok,
-            )
-            return (completion.choices[0].message.content or "").strip()
-        except Exception as e:
-            logger.warning("Groq generation failed: %s", e)
-            return self._fallback_grounded_answer(query, [], equations, tables, figures)
+        _FALLBACK_CHAIN = [
+            self.config.groq_model,
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "qwen/qwen3-32b",
+        ]
+        seen = set()
+        fallback_chain = [m for m in _FALLBACK_CHAIN if not (m in seen or seen.add(m))]
+
+        last_exc = None
+        for model in fallback_chain:
+            try:
+                completion = self.client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.1,
+                    max_tokens=max_tok,
+                )
+                if model != self.config.groq_model:
+                    logger.info("RAG used fallback model %s (primary %s rate-limited)", model, self.config.groq_model)
+                return (completion.choices[0].message.content or "").strip()
+            except Exception as exc:
+                err_str = str(exc)
+                if "rate_limit" in err_str or "429" in err_str:
+                    logger.warning("Rate limit on %s, trying next model...", model)
+                    last_exc = exc
+                    continue
+                raise
+
+        logger.warning("All RAG models rate-limited: %s", last_exc)
+        return self._fallback_grounded_answer(query, [], equations, tables, figures)
 
     def _build_system_prompt(self, query: str) -> str:
         q = query.lower()
@@ -1444,15 +1510,27 @@ class EnhancedRAGSystem:
         return f"""
 You are a PhD-level research assistant capable of analysing research papers across ALL domains.
 
-TABLE RECONSTRUCTION RULE:
+EQUATION ANTI-HALLUCINATION (strictly enforced):
+- NEVER reconstruct or recall equations from memory. Only display equations that are EXPLICITLY PRESENT in the retrieved document chunks below.
+- If an equation is not found in the provided context, respond: "The equation was not found in the retrieved sections. Please try rephrasing your search."
+- Only define variables that ACTUALLY APPEAR in the retrieved formula. Never invent variable names.
+- After any numerical example or calculation, validate the result is within the expected range for that metric (e.g. probabilities must be between 0 and 1, percentages between 0 and 100).
+- For mathematical equations, always use $...$ (inline) or $$...$$ (display) LaTeX syntax.
+- Greek letters must use LaTeX commands (\\alpha, \\beta, etc.), never bare Unicode.
+
+TABLE RULES (strictly enforced):
 - When extracting tables, output them in perfectly formatted Markdown tables.
 - If a table spans multiple lines in the PDF, logically reconstruct it into a single clean Markdown table with aligned columns.
 - Preserve every cell value exactly - never round, merge, or omit data.
+- Keep "value +/- std" together in the SAME cell - never split across rows or columns.
+- When answering about table data, reproduce the exact markdown table from context. Do not summarise cell values.
+- If the user asks for a specific metric and it appears in a table column, quote the exact cell value and table number.
+- When MULTIPLE tables are provided in context (e.g. Tables 2 and 3), you MUST use data from ALL of them. Perform cross-table reasoning: join rows, calculate differences, and draw comparisons. Never refuse when the tables are present in context.
 
-EQUATION FORMATTING RULE:
-- For mathematical equations, always use $...$ (inline) or $$...$$ (display) LaTeX syntax.
-- Ensure all variables are clearly defined after each equation.
-- Greek letters must use LaTeX commands (\\alpha, \\beta, etc.), never bare Unicode.
+FIGURE REFERENCE RULE:
+- When a user asks about a figure (e.g. "Figure 5a"), use the figure caption AND surrounding descriptive paragraphs from context.
+- If the figure image itself cannot be rendered, display the caption and describe what the figure shows based on the surrounding text.
+- NEVER return a refusal if the figure is described in the paper text - only refuse if there is genuinely no mention of it anywhere in the provided context.
 
 ANTI-FIXATION RULE:
 - Do NOT reuse structural names (e.g., "Equation 1", "Table 2") from prior turns or generic assumptions.
@@ -1469,18 +1547,14 @@ CORE RULES (strictly enforced - violation is a critical failure):
    Never guess, approximate, extrapolate, or fabricate numerical values.
 3. Cite your source for every factual claim using:
    (Source: Page X) | (Source: Table N) | (Source: Equation N) | (Source: Figure N)
+4. After every extracted element (table, equation, figure), add a 2-3 sentence plain-language explanation of what it shows, based on the surrounding paper text.
 
 MATH & EQUATION FORMATTING (mandatory):
-4. Render ALL mathematical content in valid LaTeX:
+5. Render ALL mathematical content in valid LaTeX:
    - Inline math: $symbol$ or $expression$
    - Display math: $$full equation$$
    - Greek letters MUST use LaTeX commands: \\alpha, \\beta, \\gamma, etc. - never bare Unicode.
-5. When context contains a LaTeX block ($$...$$), reproduce it exactly as given.
-
-TABLE RULES:
-6. When answering about table data, reproduce the exact markdown table from context.
-   Do not summarise cell values - show the actual numbers/strings from the table.
-7. If the user asks for a specific metric and it appears in a table column, quote the exact cell value and table number.
+6. When context contains a LaTeX block ($$...$$), reproduce it exactly as given.
 
 {asset_instruction}
 
@@ -1739,6 +1813,7 @@ FORMATTING STYLE:
             "label": f"Table {getattr(tb, 'global_number', '?')}",
             "global_number": getattr(tb, "global_number", None),
             "page_number": page_number,
+            "section": getattr(tb, "section", ""),
             "caption": getattr(tb, "caption", "") or f"Table {getattr(tb, 'global_number', '?')}",
             "markdown": getattr(tb, "markdown", ""),
             "raw_text": getattr(tb, "raw_text", ""),

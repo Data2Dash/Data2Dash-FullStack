@@ -279,3 +279,18 @@
   from { transform: scaleX(1); transform-origin: left; }
   to   { transform: scaleX(0); transform-origin: left; }
 }
+
+/* ── Enhanced table rendering in chat ─────────────────────────────────── */
+.table-enhanced table {
+  font-variant-numeric: tabular-nums;
+  border-spacing: 0;
+}
+.table-enhanced td,
+.table-enhanced th {
+  white-space: nowrap;
+}
+/* Keep ± values visually tight */
+.table-enhanced td {
+  font-family: 'Inter', ui-monospace, monospace;
+  letter-spacing: -0.01em;
+}

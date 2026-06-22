@@ -454,7 +454,7 @@ class AdvancedResponseFormatter:
         Remove common PDF-extraction artifacts from a raw LaTeX / equation string:
         - Leading equation-number prefixes like "12 :" or "(4)"
         - Trailing non-math noise like section headings appended after the formula
-        - Garbled \xiki / \xik artifacts
+        - Garbled xiki / xik artifacts from PDF extraction
         """
         if not raw:
             return raw

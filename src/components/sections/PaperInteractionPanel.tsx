@@ -1133,6 +1133,7 @@ export function PaperInteractionPanel({
   // Do NOT include initialMessage in deps — it's a JSX element that creates a new
   // reference on every render, causing infinite re-sync and message duplication.
   const prevSessionRef = useRef(sessionId);
+  const prevImportingRef = useRef(isImporting);
   useEffect(() => {
     if (prevSessionRef.current !== sessionId) {
       prevSessionRef.current = sessionId;
@@ -1150,6 +1151,17 @@ export function PaperInteractionPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // Update the status message when import finishes (isImporting transitions false)
+  useEffect(() => {
+    if (prevImportingRef.current && !isImporting) {
+      setMessages((prev) => {
+        if (prev.length === 0) return [{ role: 'ai' as const, content: initialMessage }];
+        return [{ ...prev[0], content: initialMessage }, ...prev.slice(1)];
+      });
+    }
+    prevImportingRef.current = isImporting;
+  }, [isImporting, initialMessage]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading || !onSendMessage) return;
