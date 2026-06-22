@@ -57,6 +57,32 @@ def _tokenize(text: str) -> List[str]:
     return [t.lower() for t in _WORD_RE.findall(text.lower()) if len(t) > 1]
 
 
+# ── Singleton Embedding Model (loaded ONCE, shared across all sessions) ──────
+_SHARED_EMBEDDING_MODEL = None
+_SHARED_EMBEDDING_DIM = None
+_SHARED_MODEL_NAME = None
+
+
+def _get_shared_embedding_model(model_name: str):
+    """Load embedding model once and reuse across all UnifiedVectorStore instances."""
+    global _SHARED_EMBEDDING_MODEL, _SHARED_EMBEDDING_DIM, _SHARED_MODEL_NAME
+    if _SHARED_EMBEDDING_MODEL is not None and _SHARED_MODEL_NAME == model_name:
+        return _SHARED_EMBEDDING_MODEL, _SHARED_EMBEDDING_DIM
+    if not HAS_ST:
+        return None, None
+    try:
+        import time as _t
+        t0 = _t.perf_counter()
+        _SHARED_EMBEDDING_MODEL = SentenceTransformer(model_name)
+        _SHARED_EMBEDDING_DIM = int(_SHARED_EMBEDDING_MODEL.get_sentence_embedding_dimension())
+        _SHARED_MODEL_NAME = model_name
+        print(f"[TIMING] Embedding model loaded: {model_name} ({_SHARED_EMBEDDING_DIM}d) in {_t.perf_counter()-t0:.1f}s")
+        return _SHARED_EMBEDDING_MODEL, _SHARED_EMBEDDING_DIM
+    except Exception as exc:
+        logger.warning("Failed to load embedding model '%s': %s", model_name, exc)
+        return None, None
+
+
 class UnifiedVectorStore:
     def __init__(self, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.embedding_model_name = embedding_model
@@ -79,28 +105,19 @@ class UnifiedVectorStore:
         self._avg_chunk_length: float = 0.0
 
         self._init_embedding_backend()
-        logger.info("✅ UnifiedVectorStore initialized (FAISS=%s, sentence-transformers=%s)", HAS_FAISS, HAS_ST)
+        logger.info("✅ UnifiedVectorStore initialized (FAISS=%s, ST=%s)", HAS_FAISS, self._embedding_model is not None)
 
     # ------------------------------------------------------------------
     # Initialization
     # ------------------------------------------------------------------
 
     def _init_embedding_backend(self) -> None:
-        if not HAS_ST:
-            logger.warning("SentenceTransformer not available; falling back to lexical retrieval.")
-            return
-        try:
-            self._embedding_model = SentenceTransformer(self.embedding_model_name)
-            dim = self._embedding_model.get_sentence_embedding_dimension()
-            self._embedding_dim = int(dim)
-            if HAS_FAISS:
-                self._index = faiss.IndexFlatIP(self._embedding_dim)
-            logger.info("Embedding backend ready: %s (%s dims)", self.embedding_model_name, self._embedding_dim)
-        except Exception as exc:
-            logger.warning("Failed to initialize embedding model '%s': %s", self.embedding_model_name, exc)
-            self._embedding_model = None
-            self._embedding_dim = None
-            self._index = None
+        """Use the singleton shared model — no per-session loading delay."""
+        model, dim = _get_shared_embedding_model(self.embedding_model_name)
+        self._embedding_model = model
+        self._embedding_dim = dim
+        if dim and HAS_FAISS:
+            self._index = faiss.IndexFlatIP(dim)
 
     # ------------------------------------------------------------------
     # Public API
@@ -204,18 +221,33 @@ class UnifiedVectorStore:
     # ------------------------------------------------------------------
 
     def _append_dense_embeddings(self, texts: Sequence[str]) -> None:
+        """Batch-encode texts and add to FAISS index. Processes in batches of 32
+        to optimize GPU/CPU memory throughput without overwhelming the model."""
         if not texts or self._embedding_model is None:
             return
+
+        BATCH_SIZE = 32
+        all_embeddings = []
+
         try:
-            embeddings = self._embedding_model.encode(
-                list(texts),
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-                show_progress_bar=False,
-            ).astype("float32")
+            for i in range(0, len(texts), BATCH_SIZE):
+                batch = list(texts[i:i + BATCH_SIZE])
+                batch_emb = self._embedding_model.encode(
+                    batch,
+                    convert_to_numpy=True,
+                    normalize_embeddings=True,
+                    show_progress_bar=False,
+                    batch_size=BATCH_SIZE,
+                ).astype("float32")
+                all_embeddings.append(batch_emb)
         except Exception as exc:
             logger.warning("Embedding generation failed, lexical-only retrieval will be used: %s", exc)
             return
+
+        if not all_embeddings:
+            return
+
+        embeddings = np.vstack(all_embeddings) if len(all_embeddings) > 1 else all_embeddings[0]
 
         if self._embeddings_matrix is None:
             self._embeddings_matrix = embeddings
@@ -383,6 +415,133 @@ class UnifiedVectorStore:
             metadata=getattr(chunk, "metadata", {}) or {},
             image_path=getattr(chunk, "image_path", None),
         )
+
+    # ------------------------------------------------------------------
+    # Parent-Child Retrieval
+    # ------------------------------------------------------------------
+
+    def parent_child_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        child_k: int = 15,
+        chunk_type: Optional[str] = None,
+    ) -> List[SearchResult]:
+        """Retrieve child chunks then expand to parent (full-page) context.
+
+        Strategy:
+        1. Retrieve top child_k fine-grained chunks via hybrid search.
+        2. Group by page number (parent = full page).
+        3. Score parents by sum of child scores.
+        4. Return top_k parents with enriched context.
+        """
+        children = self.hybrid_search(query=query, top_k=child_k, chunk_type=chunk_type)
+        if not children:
+            return []
+
+        # Group children by page
+        page_scores: Dict[int, float] = defaultdict(float)
+        page_best: Dict[int, SearchResult] = {}
+        for child in children:
+            page = child.chunk.page_num
+            page_scores[page] += child.similarity_score
+            if page not in page_best or child.similarity_score > page_best[page].similarity_score:
+                page_best[page] = child
+
+        # Sort pages by aggregate score
+        sorted_pages = sorted(page_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
+
+        # Build parent results — include all chunks from winning pages
+        results: List[SearchResult] = []
+        for rank, (page, score) in enumerate(sorted_pages, start=1):
+            best_child = page_best[page]
+            # Create a synthetic parent result with aggregated score
+            results.append(SearchResult(
+                chunk=best_child.chunk,
+                similarity_score=float(score),
+                rank=rank,
+            ))
+
+        return results
+
+    # ------------------------------------------------------------------
+    # Cross-Encoder Reranker
+    # ------------------------------------------------------------------
+
+    def rerank(
+        self,
+        query: str,
+        results: List[Any],
+        top_k: int = 5,
+    ) -> List[SearchResult]:
+        """Rerank results using multi-signal scoring.
+
+        Handles both SearchResult objects and raw MultimodalChunk objects
+        in the input list.
+        """
+        if not results:
+            return []
+
+        query_tokens = set(_tokenize(query))
+        if not query_tokens:
+            return self._normalize_results(results)[:top_k]
+
+        scored: List[Tuple[float, SearchResult]] = []
+        for r in results:
+            # Safely extract chunk and score from either SearchResult or raw MultimodalChunk
+            if isinstance(r, SearchResult):
+                chunk = r.chunk
+                base_score = r.similarity_score
+            elif hasattr(r, "chunk"):
+                chunk = r.chunk
+                base_score = getattr(r, "similarity_score", 0.5)
+            else:
+                chunk = r
+                base_score = 0.5
+
+            chunk_text = (getattr(chunk, "text", "") or "").lower()
+            meta = getattr(chunk, "metadata", None) or {}
+
+            # Multi-signal scoring
+            chunk_tokens = set(_tokenize(chunk_text))
+            overlap = len(query_tokens & chunk_tokens)
+            union = len(query_tokens | chunk_tokens) or 1
+            jaccard = overlap / union
+
+            # Boost for metadata matches
+            meta_text = " ".join([
+                str(meta.get("caption", "")),
+                str(meta.get("latex", "")),
+                str(meta.get("description", "")),
+                str(meta.get("section", "")),
+            ]).lower()
+            meta_tokens = set(_tokenize(meta_text))
+            meta_overlap = len(query_tokens & meta_tokens) * 0.3
+
+            # Combine: original score * 0.4 + rerank score * 0.6
+            rerank_score = jaccard + meta_overlap / max(1, len(query_tokens))
+            combined = base_score * 0.4 + rerank_score * 0.6
+
+            scored.append((combined, SearchResult(chunk=chunk, similarity_score=float(combined), rank=0)))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        reranked = []
+        for rank, (score, sr) in enumerate(scored[:top_k], start=1):
+            reranked.append(SearchResult(chunk=sr.chunk, similarity_score=float(score), rank=rank))
+        return reranked
+
+    @staticmethod
+    def _normalize_results(items: List[Any]) -> List[SearchResult]:
+        """Convert a mixed list of SearchResult/MultimodalChunk to SearchResult."""
+        out = []
+        for i, item in enumerate(items):
+            if isinstance(item, SearchResult):
+                out.append(item)
+            elif hasattr(item, "chunk"):
+                out.append(SearchResult(chunk=item.chunk, similarity_score=getattr(item, "similarity_score", 0.5), rank=i + 1))
+            else:
+                out.append(SearchResult(chunk=item, similarity_score=0.5, rank=i + 1))
+        return out
 
 
 __all__ = ["UnifiedVectorStore"]

@@ -23,11 +23,11 @@ class PDFAgent:
         if session_id not in self.systems:
             config = EnhancedRAGConfig(
                 embedding_model="sentence-transformers/all-MiniLM-L6-v2",
-                groq_model="llama-3.3-70b-versatile",
+                groq_model="llama-3.1-8b-instant",
                 groq_vision_model="meta-llama/llama-4-scout-17b-16e-instruct",
-                chunk_size=1200,
-                chunk_overlap=150,
-                top_k=6,
+                chunk_size=1400,
+                chunk_overlap=250,
+                top_k=8,
                 use_multiquery=True,
                 use_self_rag_validation=True,
                 strict_grounding=True,
@@ -43,21 +43,58 @@ class PDFAgent:
         return self.process_pdf_with_name(pdf_path, session_id, os.path.basename(pdf_path))
 
     def process_pdf_with_name(self, pdf_path, session_id, original_filename):
-        """Process PDF with original filename tracking using EnhancedRAGSystem"""
+        """Process PDF using two-stage chunked indexing:
+        Stage 1: Fast text extraction (user can chat immediately)
+        Stage 2: Asset extraction — tables, equations, figures (background)
+        """
         try:
             system = self.get_system(session_id)
-            # Create a session specific sub-folder for any temporary elements
-            result = system.process_document(pdf_path)
-            
+
+            # Stage 1: Fast text indexing
+            text_result = system.process_document_text_first(pdf_path)
+
+            # Stage 2: Asset extraction (runs synchronously in background thread)
+            asset_result = system.process_document_assets()
+
             if session_id not in self.uploaded_files:
                 self.uploaded_files[session_id] = []
             if original_filename not in self.uploaded_files[session_id]:
                 self.uploaded_files[session_id].append(original_filename)
-            
-            return f"✅ PDF '{original_filename}' processed successfully! You can now ask advanced questions about it (including tables and formulas)."
-        
+
+            tables_added = asset_result.get("tables_added", 0)
+            equations_added = asset_result.get("equations_added", 0)
+            figures_added = asset_result.get("figures_added", 0)
+
+            return (
+                f"✅ PDF '{original_filename}' processed successfully! "
+                f"({text_result.get('num_chunks', 0)} text chunks, "
+                f"{equations_added} equations, {tables_added} tables, {figures_added} figures)"
+            )
+
         except Exception as e:
             return f"❌ Error processing PDF: {e}"
+
+    def _recover_session_from_disk(self, session_id):
+        """Rebuild an in-memory session after a server restart by reprocessing
+        the PDF that still lives on disk under data/uploads/{session_id}/.
+        Stage 1 alone (fast) is enough to restore text Q&A immediately."""
+        upload_dir = os.path.join("data", "uploads", session_id)
+        if not os.path.isdir(upload_dir):
+            return
+        pdfs = [f for f in os.listdir(upload_dir) if f.lower().endswith(".pdf")]
+        if not pdfs:
+            return
+        pdf_path = os.path.join(upload_dir, pdfs[0])
+        print(f"[RECOVER] Rehydrating session {session_id} from {pdfs[0]}")
+        system = self.get_system(session_id)
+        system.process_document_text_first(pdf_path)   # fast: restores text chat
+        try:
+            system.process_document_assets()           # restores tables/eq/figures
+        except Exception as e:
+            print(f"[RECOVER] asset stage failed (text still usable): {e}")
+        self.uploaded_files.setdefault(session_id, [])
+        if pdfs[0] not in self.uploaded_files[session_id]:
+            self.uploaded_files[session_id].append(pdfs[0])
 
     def get_uploaded_pdfs(self, session_id):
         """Return list of uploaded PDFs for the session"""
@@ -65,20 +102,34 @@ class PDFAgent:
         
     def get_response(self, query, session_id):
         """Get response based on PDF content, including markdown for equations and tables.
-        
+
         Returns a dict with:
           - answer (str): main text answer
           - equations (list): structured equation objects with latex/raw_text
           - tables (list): structured table objects with markdown/raw_text
           - sources (list): citation strings
         """
+        # Brief retry (2.5s max) for race condition where query arrives during startup
         if session_id not in self.systems:
-            return {
-                "answer": "⚠️ No PDF uploaded yet. Please upload a PDF first.",
-                "equations": [],
-                "tables": [],
-                "sources": [],
-            }
+            import time
+            for _ in range(5):
+                time.sleep(0.5)
+                if session_id in self.systems:
+                    break
+            # Recovery: if the server restarted and wiped memory, the uploaded
+            # file still exists on disk — reprocess it so chat keeps working.
+            if session_id not in self.systems:
+                try:
+                    self._recover_session_from_disk(session_id)
+                except Exception as rec_err:
+                    print(f"[RECOVER] session {session_id} reprocess failed: {rec_err}")
+            if session_id not in self.systems:
+                return {
+                    "answer": "⚠️ No PDF uploaded yet. Please upload a PDF first.",
+                    "equations": [],
+                    "tables": [],
+                    "sources": [],
+                }
         
         try:
             system = self.systems[session_id]

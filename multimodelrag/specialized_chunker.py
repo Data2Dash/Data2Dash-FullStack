@@ -43,9 +43,9 @@ class SpecializedChunker:
     STRATEGIES = {
         'equation': ChunkingStrategy(
             chunk_type='equation',
-            chunk_size=800,  # المعادلات غالباً قصيرة
+            chunk_size=800,
             overlap=100,
-            context_window=3,  # 3 أسطر قبل/بعد
+            context_window=6,  # 6 lines before/after for variable definitions
             priority_boost=1.5,
             metadata_extractors=['equation_number', 'section', 'variables']
         ),
@@ -95,11 +95,15 @@ class SpecializedChunker:
             equation, page_text, strategy.context_window
         )
         
-        # بناء النص الكامل للـ chunk
+        # Clean LaTeX at ingestion: fix $$$ → $$, remove empty $$ blocks
+        raw_latex = equation.latex or equation.text or ""
+        raw_latex = re.sub(r"\${3,}", "$$", raw_latex)
+        raw_latex = re.sub(r"\$\$\s*\$\$", "", raw_latex)
+
         chunk_text = f"""
 [EQUATION {equation.global_number}]
 
-LaTeX: {equation.latex or equation.text}
+LaTeX: {raw_latex}
 
 Context: {context}
 
@@ -123,7 +127,7 @@ Section: {section or equation.section}
             'equation_type': getattr(equation, 'equation_type', 'display'),
             'confidence': getattr(equation, 'confidence', 0.9),
             'variables': variables,
-            'context': context[:200],  # أول 200 حرف من السياق
+            'context': context[:400],
             'content_priority': strategy.priority_boost,
             'has_description': bool(equation.description),
             'bbox': equation.bbox,
@@ -149,18 +153,21 @@ Section: {section or equation.section}
         page_text: str,
         section: str = ""
     ) -> MultimodalChunk:
-        """
-        Chunking متخصص للجداول
-        """
+        """Table chunking — stores FULL markdown as a single unbroken chunk."""
         strategy = self.STRATEGIES['table']
-        
-        # استخراج السياق
+
         context = self._extract_context_around_table(
             table, page_text, strategy.context_window
         )
-        
-        # تحليل هيكل الجدول
+
         table_structure = self._analyze_table_structure(table.markdown)
+
+        # Validation: warn if table structure looks inconsistent
+        if table_structure['rows'] > 0 and table_structure['cols'] < 2:
+            logger.warning(
+                "Table %d (page %d): Only %d column detected — possible extraction issue",
+                table.global_number, table.page_number, table_structure['cols']
+            )
         
         # بناء نص الـ chunk
         chunk_text = f"""
@@ -443,25 +450,22 @@ Section: {section or figure.section}
         return list(variables)[:20]  # حد أقصى 20 متغير
     
     def _analyze_table_structure(self, markdown: str) -> Dict[str, Any]:
-        """تحليل هيكل الجدول"""
+        """Analyze table structure from markdown representation."""
         lines = markdown.strip().split('\n')
-        
-        # عد الصفوف
-        rows = len([l for l in lines if '|' in l and not l.strip().startswith('|-')])
-        
-        # عد الأعمدة (من أول صف)
-        if lines:
-            first_row = lines[0]
-            cols = len([c for c in first_row.split('|') if c.strip()])
-        else:
-            cols = 0
-        
-        # استخراج headers
+
+        # Count data rows (lines with | that aren't separator lines)
+        data_lines = [l for l in lines if '|' in l and not re.match(r'^\s*\|[\s\-:]+\|\s*$', l)]
+        rows = len(data_lines)
+
+        # Count columns from the first data row
+        cols = 0
         headers = []
-        if lines:
-            header_row = lines[0]
-            headers = [h.strip() for h in header_row.split('|') if h.strip()]
-        
+        if data_lines:
+            first_row = data_lines[0]
+            cells = [c.strip() for c in first_row.split('|') if c.strip()]
+            cols = len(cells)
+            headers = cells
+
         return {
             'rows': rows,
             'cols': cols,
@@ -504,17 +508,73 @@ Section: {section or figure.section}
     def _split_text_with_overlap(
         self, text: str, chunk_size: int, overlap: int
     ) -> List[str]:
-        """تقسيم النص مع overlap"""
-        words = text.split()
-        chunks = []
-        
-        i = 0
-        while i < len(words):
-            chunk_words = words[i:i + chunk_size]
-            chunks.append(' '.join(chunk_words))
-            i += chunk_size - overlap
-        
-        return chunks
+        """Layout-aware text splitting that preserves structural boundaries.
+
+        Splits on markdown boundaries (headers, display math, table blocks)
+        before falling back to word-count chunking. This keeps equations and
+        tables fully intact within a single chunk.
+        """
+        if not text or not text.strip():
+            return []
+
+        # Split into logical segments at structural boundaries
+        segments = self._layout_aware_segment(text)
+
+        # Merge small segments up to chunk_size, respecting boundaries
+        chunks: List[str] = []
+        current: List[str] = []
+        current_len = 0
+
+        for seg in segments:
+            seg_len = len(seg.split())
+            # If a single segment exceeds chunk_size, keep it whole (don't break math/tables)
+            if seg_len > chunk_size and not current:
+                chunks.append(seg.strip())
+                continue
+            # If adding this segment would overflow, flush current
+            if current_len + seg_len > chunk_size and current:
+                chunks.append('\n\n'.join(current).strip())
+                # Keep overlap: last segment(s) fitting in overlap window
+                overlap_buf: List[str] = []
+                overlap_len = 0
+                for prev in reversed(current):
+                    prev_len = len(prev.split())
+                    if overlap_len + prev_len > overlap:
+                        break
+                    overlap_buf.insert(0, prev)
+                    overlap_len += prev_len
+                current = overlap_buf
+                current_len = overlap_len
+
+            current.append(seg)
+            current_len += seg_len
+
+        if current:
+            chunks.append('\n\n'.join(current).strip())
+
+        return [c for c in chunks if len(c.split()) >= 15]
+
+    @staticmethod
+    def _layout_aware_segment(text: str) -> List[str]:
+        """Split text into segments at layout boundaries without breaking structures.
+
+        Boundaries: markdown headers, display math ($$...$$), table blocks (|...|),
+        and double newlines (paragraph breaks).
+        """
+        # Pattern matches: display math blocks, markdown table rows, or headers
+        boundary_re = re.compile(
+            r'(?:'
+            r'(?:^|\n)(?=#{1,4}\s)'          # Markdown header
+            r'|(?:^|\n)(?=\$\$)'              # Display math start
+            r'|(?<=\$\$)\n'                   # Display math end
+            r'|(?:^|\n)(?=\|.*\|.*\n)'        # Table row start
+            r'|\n{2,}'                         # Paragraph break
+            r')'
+        )
+
+        segments = boundary_re.split(text)
+        # Clean and filter empty segments
+        return [s.strip() for s in segments if s and s.strip()]
     
     def _find_section_for_page(self, sections: List, page_num: int) -> str:
         """إيجاد اسم القسم للصفحة"""

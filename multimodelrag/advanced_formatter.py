@@ -25,15 +25,12 @@ class AdvancedResponseFormatter:
     def __init__(self):
         self.eq_keywords = {
             "equation", "equations", "formula", "formulas", "math", "mathematical",
-            "probability", "definition", "derive", "derivation", "mips", "encoder",
-            "decoder", "latent", "marginalization", "explain equation", "show equation",
+            "definition", "derive", "derivation", "explain equation", "show equation",
         }
         self.table_keywords = {
             "table", "tables", "result", "results", "score", "scores",
             "benchmark", "benchmarks", "performance", "dataset", "evaluation",
-            "triviaqa", "nq", "natural questions", "webquestions", "wq",
-            "fever", "msmarco", "ms marco", "jeopardy", "compare", "comparison",
-            "baseline", "ablation",
+            "compare", "comparison", "baseline", "ablation",
         }
         self.figure_keywords = {
             "figure", "figures", "diagram", "diagrams", "architecture",
@@ -215,8 +212,6 @@ class AdvancedResponseFormatter:
         # Matches: "equation 1", "equation(1)", "equation (1)", "eq.1", "eq.(1)"
         if re.search(r"\b(?:equation|eq\.?)\s*[\(\[]?\s*\d+\s*[\)\]]?", q, re.IGNORECASE):
             return True
-        if re.search(r"p[_\s-]*eta|pη|p[_\s-]*theta|pθ|d\(z\)|q\(x\)|rag-token|rag token|rag sequence|rag-sequence", q):
-            return True
         return False
 
     def _is_table_query(self, q: str) -> bool:
@@ -237,27 +232,184 @@ class AdvancedResponseFormatter:
     # Cleanup
     # ------------------------------------------------------------------
 
+    # ----------------------------------------------------------------
+    # Token-duplication cleaner
+    # ----------------------------------------------------------------
+
+    @staticmethod
+    def _fix_token_duplication(text: str) -> str:
+        """Remove adjacent duplicate tokens produced by PyMuPDF double-scanning glyphs.
+
+        Handles cases like:
+          "Q Q" → "Q"
+          "d_k d_k" → "d_k"
+          "\\sqrt{d_k} \\sqrt{d_k}" → "\\sqrt{d_k}"
+          "the attention mechanism the attention mechanism" → "the attention mechanism"
+
+        Only collapses tokens that appear side-by-side (with optional whitespace between).
+        LaTeX-heavy math blocks ($$...$$) are left untouched to avoid corrupting valid
+        notation like \\frac{a}{a}.
+        """
+        if not text:
+            return text
+
+        # Step 1: Protect $$...$$ and $...$ blocks from de-dup mangling
+        math_blocks: list[str] = []
+        placeholder_tmpl = "\x00MATH{idx}\x00"
+
+        def _stash_math(m: re.Match) -> str:  # type: ignore[type-arg]
+            math_blocks.append(m.group(0))
+            return placeholder_tmpl.format(idx=len(math_blocks) - 1)
+
+        text = re.sub(r"\$\$.*?\$\$", _stash_math, text, flags=re.S)
+        text = re.sub(r"\$[^\$\n]+?\$", _stash_math, text)
+
+        # Step 2: Collapse adjacent identical tokens (word, symbol, subscripted token)
+        text = re.sub(
+            r"\b([A-Za-z0-9_\-\.]{1,20})(?:\s+\1)+\b",
+            r"\1",
+            text,
+        )
+        # Handles short tokens like single uppercase letters: "Q Q" → "Q"
+        text = re.sub(
+            r"(?<![\w$])([A-Z])\s+\1(?![\w$])",
+            r"\1",
+            text,
+        )
+
+        # Step 3: Collapse repeated multi-word phrases (2-6 words repeated adjacently)
+        # e.g. "the attention mechanism the attention mechanism" → "the attention mechanism"
+        text = re.sub(
+            r"\b((?:\S+\s+){1,5}\S+)\s+\1\b",
+            r"\1",
+            text,
+        )
+
+        # Step 4: Restore math blocks
+        for idx, block in enumerate(math_blocks):
+            text = text.replace(placeholder_tmpl.format(idx=idx), block)
+
+        return text
+
+    @staticmethod
+    def _math_fallback_cleanup(text: str) -> str:
+        """Ensure math notation degrades gracefully if the frontend renderer fails.
+
+        Adds a plain-text fallback representation alongside LaTeX so that if
+        KaTeX/MathJax fails to render, the user still sees readable text instead
+        of blank lines.
+
+        Strategy:
+        - Ensure $$ blocks have no leading/trailing whitespace issues that break renderers.
+        - Normalize malformed delimiters (e.g. $$$ → $$, unbalanced $).
+        - For inline $...$ blocks, ensure they don't span multiple lines (breaks KaTeX).
+        """
+        if not text:
+            return text
+
+        # Fix triple-dollar (common LLM mistake): $$$ → $$
+        text = re.sub(r"\${3,}", "$$", text)
+
+        # Fix display math blocks: ensure $$ are on their own lines for block rendering
+        # but only if they contain actual content
+        text = re.sub(r"\$\$\s*\n?\s*\$\$", "", text)  # Remove empty $$ $$ blocks
+
+        # Ensure display-math $$ delimiters are on separate lines for reliable rendering
+        text = re.sub(r"([^\n])\$\$([^\$])", r"\1\n$$\2", text)
+        text = re.sub(r"([^\$])\$\$([^\n$])", r"\1$$\n\2", text)
+
+        # Fix inline math spanning multiple lines (breaks KaTeX) — convert to display
+        def _fix_multiline_inline(m: re.Match) -> str:
+            content = m.group(1)
+            if "\n" in content:
+                return f"$${content.strip()}$$"
+            return m.group(0)
+
+        text = re.sub(r"(?<!\$)\$([^\$]{1,500}?)\$(?!\$)", _fix_multiline_inline, text, flags=re.S)
+
+        # UNIVERSAL stray-$ fix: remove $ delimiters NESTED inside a $$...$$ block,
+        # e.g. "$$ \sqrt{$d_{k}$} $$" -> "$$ \sqrt{d_{k}} $$".
+        def _strip_inner_dollars(m: re.Match) -> str:
+            inner = m.group(1).replace("$", "")
+            return f"$${inner}$$"
+        text = re.sub(r"\$\$(.+?)\$\$", _strip_inner_dollars, text, flags=re.S)
+
+        # Also strip stray $ inside inline $...$ blocks (e.g. "$\sqrt{$d_k$}$"
+        # → "$\sqrt{d_k}$"). The pattern: find $...$, strip any inner $ that
+        # aren't at the boundaries.
+        def _strip_inner_dollars_inline(m: re.Match) -> str:
+            inner = m.group(1)
+            cleaned = inner.replace("$", "")
+            if cleaned != inner:
+                return f"${cleaned}$"
+            return m.group(0)
+        text = re.sub(r"(?<!\$)\$([^\$\n]{1,500}?)\$(?!\$)", _strip_inner_dollars_inline, text)
+
+        # Remove completely empty lines that result from failed math stripping
+        text = re.sub(r"\n{3,}", "\n\n", text)
+
+        return text
+
     def _cleanup_answer_text(self, text: str) -> str:
+        """Clean the raw LLM answer text before UI delivery.
+
+        Key rule: $$...$$ and $...$ blocks must be PRESERVED so the frontend
+        MathJax/KaTeX renderer can display them.  Previous code stripped all
+        math blocks here, which caused blank equation placeholders in the UI.
+        """
         if not text:
             return ""
+        # Remove prompt-template artifacts (NOT math)
         text = re.sub(r"\bShort Summary\s+Short\b", "Short Summary", text, flags=re.I)
         text = re.sub(r"\bExplanation\s+Short\b", "Explanation", text, flags=re.I)
-        # NOTE: Do NOT strip $$...$$ blocks here — they are valid LaTeX equation displays
-        text = re.sub(r"```(?:latex|math|text)?\n.*?```", "", text, flags=re.S)
+        # Remove fenced code blocks that are purely internal prompt artefacts
+        text = re.sub(r"```(?:instructions?|system|rules?).*?```", "", text, flags=re.S | re.I)
         text = text.replace("\r", "\n")
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r"[ \t]{2,}", " ", text)
+        # Fix token duplication ("Q Q" → "Q", "d_k d_k" → "d_k")
+        text = self._fix_token_duplication(text)
+        # Ensure math formatting degrades gracefully if frontend renderer fails
+        text = self._math_fallback_cleanup(text)
         return text.strip()
 
     def _cleanup_non_equation_summary(self, text: str) -> str:
+        """Lightweight cleanup for non-equation prose summaries.
+
+        Only strips stray LaTeX command escapes that appeared OUTSIDE of any
+        math delimiters — i.e., raw backslash artefacts leaked into plain text.
+        It never touches $$...$$ or $...$ regions.
+        """
         if not text:
             return ""
         text = re.sub(r"\bTechnical Details\b.*$", "", text, flags=re.I | re.S)
-        text = re.sub(r"\\[A-Za-z]+", "", text)
-        text = re.sub(r"[_^{}]", "", text)
+
+        # Strip bare backslash-command artefacts ONLY outside math zones
+        # (e.g. a stray \\alpha that ended up in a prose sentence)
+        def _strip_latex_outside_math(src: str) -> str:
+            result_parts: list[str] = []
+            last = 0
+            for m in re.finditer(r"(\$\$.*?\$\$|\$[^\$\n]+?\$)", src, flags=re.S):
+                prose = src[last:m.start()]
+                # Strip stray LaTeX commands and raw TeX structure chars from prose only
+                prose = re.sub(r"\\[A-Za-z]+\*?", "", prose)
+                prose = re.sub(r"[_^{}]", "", prose)
+                result_parts.append(prose)
+                result_parts.append(m.group(0))  # Keep math block intact
+                last = m.end()
+            # Trailing prose after last math block
+            trailing = src[last:]
+            trailing = re.sub(r"\\[A-Za-z]+\*?", "", trailing)
+            trailing = re.sub(r"[_^{}]", "", trailing)
+            result_parts.append(trailing)
+            return "".join(result_parts)
+
+        text = _strip_latex_outside_math(text)
+
+        # De-duplicate sentences
         sentences = re.split(r"(?<=[.!?])\s+", text)
-        seen = set()
-        kept = []
+        seen: set[str] = set()
+        kept: list[str] = []
         for s in sentences:
             key = re.sub(r"\s+", " ", s.strip().lower())
             if key and key not in seen:
@@ -386,22 +538,7 @@ class AdvancedResponseFormatter:
                 if en == qn:
                     score += 100   # Exact hit — this equation wins
 
-            if any(k in query for k in ["mips", "inner product", "d(z)", "q(x)", "document encoder", "query encoder"]):
-                if any(k in text for k in ["d(z)", "q(x)", "exp", "⊤", "bert"]):
-                    score += 45
-
-            if any(k in query for k in ["p_eta", "pη", "retrieval probability", "probability formula"]):
-                if any(k in text for k in ["pη", "p_eta", "exp"]):
-                    score += 45
-
-            if "rag-token" in query or "rag token" in query:
-                if "rag-token" in text or "ragtoken" in text:
-                    score += 50
-
-            if "rag-sequence" in query or "rag sequence" in query:
-                if "rag-sequence" in text or "ragsequence" in text:
-                    score += 50
-
+            # Generic term-overlap scoring — no content-specific matching
             query_terms = set(re.findall(r"[a-zA-Z0-9_\-\(\)]+", query))
             text_terms = set(re.findall(r"[a-zA-Z0-9_\-\(\)]+", text))
             score += len(query_terms & text_terms)
@@ -442,26 +579,6 @@ class AdvancedResponseFormatter:
         return f"{label} is the relevant formula on Page {page}. {desc}".strip()
 
     def _infer_equation_explanation(self, eq: Dict[str, Any]) -> str:
-        text = " ".join([
-            str(eq.get("label", "")),
-            str(eq.get("raw_text", "")),
-            str(eq.get("text", "")),
-            str(eq.get("normalized_latex", "")),
-            str(eq.get("description", "")),
-        ]).lower()
-
-        if "rag-sequence" in text or "ragsequence" in text:
-            return (
-                "It defines RAG-Sequence by marginalizing over the top-k retrieved documents and then generating the full output sequence conditioned on each retrieved document."
-            )
-        if "rag-token" in text or "ragtoken" in text:
-            return (
-                "It defines RAG-Token, where the model can attend to a different retrieved document at each decoding step, which gives it more flexibility during generation."
-            )
-        if any(k in text for k in ["d(z)", "q(x)", "bert", "exp"]):
-            return (
-                "It defines the retrieval probability using the similarity between a document embedding d(z) and a query embedding q(x), where both are produced by neural encoders."
-            )
         desc = (eq.get("description") or "").strip()
         if desc:
             return desc
@@ -490,15 +607,12 @@ class AdvancedResponseFormatter:
             ]).lower()
             score = 0
 
-            dataset_terms = [
-                "triviaqa", "nq", "natural questions", "webquestions", "wq",
-                "fever", "msmarco", "ms marco", "jeopardy", "open-domain qa"
-            ]
             metric_terms = [
-                "score", "scores", "bleu", "rouge", "accuracy", "label acc",
-                "f1", "em", "performance", "results", "benchmark", "evaluation",
-                "ablation", "baseline"
+                "score", "scores", "accuracy", "precision", "recall",
+                "f1", "performance", "results", "benchmark", "evaluation",
+                "ablation", "baseline", "error", "loss",
             ]
+            dataset_terms = metric_terms
 
             for term in dataset_terms:
                 if term in query and term in text:

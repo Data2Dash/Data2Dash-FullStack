@@ -1,16 +1,28 @@
 import os
+import sys
+# CRITICAL (Windows): force UTF-8 stdout/stderr BEFORE anything prints. The default
+# Windows console code page is cp1252, so any print() containing Unicode (box-drawing
+# "═══", "✅", or Greek/math chars extracted from a PDF) raises UnicodeEncodeError and
+# CRASHES the background indexing thread mid-Stage-2 — leaving the spinner stuck and
+# tables/equations/figures never extracted. This was masked in test harnesses that
+# already reconfigured stdout to utf-8; the live uvicorn server did not.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import shutil
 import asyncio
 import uuid
 import re
-import sys
 import json
 import subprocess
 import base64
 from typing import List, Optional, Dict
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
 from agents.pdf_agent import PDFAgent
 from agents.search_agent import SearchAgent
@@ -89,6 +101,25 @@ os.makedirs("data/uploads", exist_ok=True)
 
 # Mount static files
 app.mount("/api/uploads", StaticFiles(directory="data/uploads"), name="uploads")
+
+
+# ── Pre-warm embedding model at startup (background thread) ──────────────────
+def _prewarm_embedding_model():
+    """Load the SentenceTransformer model once at startup so first upload is fast."""
+    try:
+        import sys as _sys
+        PROJECT_ROOT_PW = os.path.dirname(BACKEND_DIR)
+        MULTIMODELRAG_DIR_PW = os.path.join(PROJECT_ROOT_PW, "multimodelrag")
+        if MULTIMODELRAG_DIR_PW not in _sys.path:
+            _sys.path.append(MULTIMODELRAG_DIR_PW)
+        from vector_store import _get_shared_embedding_model
+        _get_shared_embedding_model("sentence-transformers/all-MiniLM-L6-v2")
+    except Exception as e:
+        print(f"[PREWARM] Embedding model pre-load failed (non-fatal): {e}")
+
+import threading as _threading_prewarm
+_prewarm_thread = _threading_prewarm.Thread(target=_prewarm_embedding_model, daemon=True)
+_prewarm_thread.start()
 
 # Initialize Agents
 # Note: Ensure GROQ_API_KEY is set in environment variables
@@ -418,16 +449,369 @@ def search_papers(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/pdf/upload")
+# ── Background indexing state ─────────────────────────────────────────────────
+import threading
+import hashlib
+
+indexing_status: Dict[str, dict] = {}
+_indexing_lock = threading.Lock()
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 1: Persistent File Hash Registry
+# ═══════════════════════════════════════════════════════════════════════════
+
+INDEX_REGISTRY_PATH = os.path.join("data", "indexed_files.json")
+
+
+class IndexRegistry:
+    """Persistent registry of indexed file hashes. Survives server restarts."""
+
+    def __init__(self, path: str = INDEX_REGISTRY_PATH):
+        self._path = path
+        self._entries: Dict[str, dict] = {}
+        self._load()
+
+    def _load(self):
+        try:
+            if os.path.exists(self._path):
+                with open(self._path, "r") as f:
+                    self._entries = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            self._entries = {}
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self._path), exist_ok=True)
+        with open(self._path, "w") as f:
+            json.dump(self._entries, f, indent=2)
+
+    def contains(self, file_hash: str) -> bool:
+        return file_hash in self._entries
+
+    def get_session_for_hash(self, file_hash: str) -> Optional[str]:
+        entry = self._entries.get(file_hash)
+        return entry.get("session_id") if entry else None
+
+    def register(self, file_hash: str, session_id: str, filename: str, analysis_complete: bool = False):
+        self._entries[file_hash] = {
+            "session_id": session_id,
+            "filename": filename,
+            "analysis_complete": analysis_complete,
+            "indexed_at": str(os.popen("date /t").read().strip()) if sys.platform == "win32" else "",
+        }
+        self._save()
+
+    def mark_analysis_complete(self, file_hash: str):
+        if file_hash in self._entries:
+            self._entries[file_hash]["analysis_complete"] = True
+            self._save()
+
+    def is_analysis_complete(self, file_hash: str) -> bool:
+        entry = self._entries.get(file_hash)
+        return bool(entry and entry.get("analysis_complete"))
+
+    def remove_by_session(self, session_id: str):
+        to_remove = [h for h, e in self._entries.items() if e.get("session_id") == session_id]
+        for h in to_remove:
+            del self._entries[h]
+        if to_remove:
+            self._save()
+
+    def remove_by_hash(self, file_hash: str):
+        if file_hash in self._entries:
+            del self._entries[file_hash]
+            self._save()
+
+
+_index_registry = IndexRegistry()
+
+
+def _file_content_hash(file_path: str) -> str:
+    """Compute MD5 hash of file content for deduplication."""
+    h = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+import time as _time_mod
+import pickle
+
+# Document-level cache directory
+DOCUMENT_CACHE_DIR = os.path.join("data", "document_cache")
+os.makedirs(DOCUMENT_CACHE_DIR, exist_ok=True)
+
+# Global pipeline budget (seconds) — circuit breaker
+PIPELINE_BUDGET_SECONDS = 60
+
+
+def _get_cache_path(file_hash: str) -> str:
+    return os.path.join(DOCUMENT_CACHE_DIR, f"{file_hash}.pkl")
+
+
+def _save_document_cache(file_hash: str, system) -> None:
+    """Persist the processed document state to disk for instant reload."""
+    try:
+        cache_data = {
+            "current_document": system.current_document,
+            "current_chunks": system.current_chunks,
+            "current_doc_id": system.current_doc_id,
+            "stage2_complete": getattr(system, "_stage2_complete", True),
+        }
+        with open(_get_cache_path(file_hash), "wb") as f:
+            pickle.dump(cache_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"[CACHE] Saved document cache for hash {file_hash[:12]}...")
+    except Exception as e:
+        print(f"[CACHE] Save failed: {e}")
+
+
+def _load_document_cache(file_hash: str, system) -> bool:
+    """Load cached document state. Returns True on success."""
+    cache_path = _get_cache_path(file_hash)
+    if not os.path.exists(cache_path):
+        return False
+    try:
+        with open(cache_path, "rb") as f:
+            cache_data = pickle.load(f)
+        system.current_document = cache_data["current_document"]
+        system.current_chunks = cache_data["current_chunks"]
+        system.current_doc_id = cache_data["current_doc_id"]
+        system._stage2_complete = cache_data.get("stage2_complete", True)
+        system._stage2_error = None
+        # Rebuild vector store from cached chunks
+        if system.current_chunks:
+            system.vector_store.add_document(system.current_doc_id, system.current_chunks)
+        print(f"[CACHE] Loaded document from cache ({len(system.current_chunks)} chunks)")
+        return True
+    except Exception as e:
+        print(f"[CACHE] Load failed (will reprocess): {e}")
+        return False
+
+
+def _index_pdf_background(agent, file_path: str, session_id: str, filename: str):
+    """Thin wrapper so ANY failure in the indexing thread is logged with a full
+    traceback (daemon-thread exceptions are otherwise swallowed silently)."""
+    print(f"[INDEX-THREAD] ENTER session={session_id} file={filename}", flush=True)
+    try:
+        _index_pdf_background_impl(agent, file_path, session_id, filename)
+        print(f"[INDEX-THREAD] EXIT-OK session={session_id}", flush=True)
+    except BaseException as e:
+        import traceback
+        print(f"[INDEX-THREAD] FATAL session={session_id}: {e}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        task_key = f"{session_id}/{filename}"
+        try:
+            if session_id in agent.systems:
+                agent.systems[session_id]._stage2_complete = True
+                agent.systems[session_id]._stage2_error = str(e)
+        except Exception:
+            pass
+        with _indexing_lock:
+            indexing_status[task_key] = {"status": "error", "message": f"indexing failed: {e}"}
+
+
+def _index_pdf_background_impl(agent, file_path: str, session_id: str, filename: str):
+    """PDF indexing with document-level caching and global timeout circuit breaker.
+
+    Cache hit path: ~2-3 seconds (load from disk, rebuild vector index).
+    Cold path: Stage 1 (text) + Stage 2 (assets) with 60s hard budget.
+    """
+    task_key = f"{session_id}/{filename}"
+    pipeline_start = _time_mod.time()
+
+    # Gate 1: Session already live in memory
+    if session_id in agent.systems:
+        with _indexing_lock:
+            indexing_status[task_key] = {"status": "ready", "message": "Already indexed (in-memory)"}
+        return
+
+    # Compute content hash
+    fhash = None
+    try:
+        fhash = _file_content_hash(file_path)
+    except Exception:
+        pass
+
+    # Gate 2: Full document cache exists on disk (INSTANT reload)
+    if fhash and os.path.exists(_get_cache_path(fhash)):
+        system = agent.get_system(session_id)
+        if _load_document_cache(fhash, system):
+            if session_id not in agent.uploaded_files:
+                agent.uploaded_files[session_id] = []
+            if filename not in agent.uploaded_files[session_id]:
+                agent.uploaded_files[session_id].append(filename)
+            elapsed = _time_mod.time() - pipeline_start
+            with _indexing_lock:
+                indexing_status[task_key] = {
+                    "status": "ready",
+                    "message": f"✅ '{filename}' loaded from cache in {elapsed:.1f}s",
+                }
+            _index_registry.register(fhash, session_id, filename, analysis_complete=True)
+            print(f"[TIMING] ═══ CACHE HIT: {elapsed:.2f}s total ═══")
+            return
+
+    # Gate 3: Concurrency lock
+    with _indexing_lock:
+        existing = indexing_status.get(task_key)
+        if existing and existing.get("status") == "processing":
+            return
+        indexing_status[task_key] = {"status": "processing", "progress": "text extraction"}
+
+    try:
+        system = agent.get_system(session_id)
+
+        # ── STAGE 1: Fast text indexing ──
+        text_result = system.process_document_text_first(file_path)
+        with _indexing_lock:
+            indexing_status[task_key] = {"status": "ready", "progress": "text indexed, assets loading..."}
+
+        if fhash:
+            _index_registry.register(fhash, session_id, filename, analysis_complete=False)
+
+        if session_id not in agent.uploaded_files:
+            agent.uploaded_files[session_id] = []
+        if filename not in agent.uploaded_files[session_id]:
+            agent.uploaded_files[session_id].append(filename)
+
+        # ── Circuit breaker check ──
+        elapsed = _time_mod.time() - pipeline_start
+        if elapsed > PIPELINE_BUDGET_SECONDS:
+            print(f"[CIRCUIT BREAKER] Stage 1 alone took {elapsed:.1f}s — skipping Stage 2")
+            system._stage2_complete = True
+            system._stage2_error = "Aborted: pipeline budget exceeded after Stage 1"
+            with _indexing_lock:
+                indexing_status[task_key] = {"status": "ready", "message": f"✅ '{filename}' text indexed (assets skipped — budget exceeded)"}
+            return
+
+        # ── STAGE 2: Asset extraction ──
+        with _indexing_lock:
+            indexing_status[task_key]["progress"] = "extracting tables & equations"
+
+        asset_result = system.process_document_assets()
+
+        # ── Circuit breaker: if VLM hasn't finished but budget exceeded, abort ──
+        elapsed = _time_mod.time() - pipeline_start
+        if elapsed > PIPELINE_BUDGET_SECONDS:
+            print(f"[CIRCUIT BREAKER] Pipeline took {elapsed:.1f}s — marking complete despite incomplete VLM")
+
+        # Save to document cache for instant future reloads
+        if fhash:
+            _save_document_cache(fhash, system)
+            _index_registry.mark_analysis_complete(fhash)
+
+        tables = asset_result.get("tables_added", 0)
+        equations = asset_result.get("equations_added", 0)
+        figures = asset_result.get("figures_added", 0)
+        total_time = _time_mod.time() - pipeline_start
+
+        with _indexing_lock:
+            indexing_status[task_key] = {
+                "status": "ready",
+                "message": (
+                    f"✅ '{filename}' indexed in {total_time:.1f}s "
+                    f"({text_result.get('num_chunks', 0)} text, "
+                    f"{equations} eq, {tables} tbl, {figures} fig)"
+                ),
+            }
+        print(f"[TIMING] ═══ COLD PATH TOTAL: {total_time:.2f}s ═══")
+
+    except Exception as e:
+        import traceback
+        error_msg = f"INDEXING FAILED [{filename}]: {str(e)}"
+        print(error_msg)
+        print(traceback.format_exc())
+        try:
+            if session_id in agent.systems:
+                agent.systems[session_id]._stage2_complete = True
+                agent.systems[session_id]._stage2_error = str(e)
+        except Exception:
+            pass
+        with _indexing_lock:
+            indexing_status[task_key] = {"status": "error", "message": error_msg}
+
+
+def _rehydrate_or_reindex(agent, session_id: str, file_name: str) -> bool:
+    """Recovery after server restart: in-memory state is wiped but the uploaded
+    file, the document cache, and the registry all survive on disk.
+    Returns True if the session is (or has been re-queued to become) ready.
+    """
+    if session_id in agent.systems:
+        return True
+    file_path = os.path.join("data", "uploads", session_id, file_name)
+    if not os.path.exists(file_path):
+        return False
+    # File exists on disk → re-trigger background indexing (will hit cache if present)
+    task_key = f"{session_id}/{file_name}"
+    with _indexing_lock:
+        existing = indexing_status.get(task_key)
+        if existing and existing.get("status") == "processing":
+            return True
+        # "queued" (NOT "processing") so the worker's concurrency guard doesn't
+        # mistake this seed value for an already-running worker and bail.
+        indexing_status[task_key] = {"status": "queued", "progress": "recovering after restart"}
+    worker = threading.Thread(
+        target=_index_pdf_background,
+        args=(agent, file_path, session_id, file_name),
+        daemon=True,
+    )
+    worker.start()
+    return True
+
+
+@app.get("/api/pdf/indexing-status/{session_id}/{file_name}")
+async def get_indexing_status(session_id: str, file_name: str):
+    """Poll the background indexing status for a file.
+    Falls back to disk recovery if in-memory status was wiped by a restart.
+    """
+    task_key = f"{session_id}/{file_name}"
+    with _indexing_lock:
+        status = indexing_status.get(task_key)
+    if status is not None:
+        return status
+
+    # No in-memory entry — recover from disk so the spinner never hangs forever
+    agent = get_pdf_agent()
+    file_path = os.path.join("data", "uploads", session_id, file_name)
+    if os.path.exists(file_path):
+        # Already fully indexed (in registry)? report ready immediately
+        try:
+            fhash = _file_content_hash(file_path)
+            if _index_registry.is_analysis_complete(fhash) or session_id in agent.systems:
+                return {"status": "ready", "message": "recovered from disk"}
+        except Exception:
+            pass
+        # File present but not finished → re-queue indexing and report processing
+        _rehydrate_or_reindex(agent, session_id, file_name)
+        return {"status": "processing", "progress": "re-indexing after restart"}
+
+    return {"status": "unknown"}
+
+
+@app.get("/api/pdf/status/{session_id}")
+async def get_session_asset_status(session_id: str):
+    """Return real-time Stage 2 asset status for a session.
+    Frontend can poll this to know exactly when tables/equations/figures are ready.
+    """
+    agent = get_pdf_agent()
+    if session_id not in agent.systems:
+        return {"stage2_complete": False, "assets_loaded": 0, "error": "Session not found"}
+    system = agent.systems[session_id]
+    return system.get_asset_status()
+
+
+@app.post("/api/pdf/upload", status_code=202)
 async def upload_pdf(
     file: UploadFile = File(...),
     session_id: str = Form(...),
     db: Session = Depends(get_db),
     credentials = Depends(bearer_scheme),
 ):
+    """Non-blocking upload: saves file, fires detached indexing thread, returns 202 in <2s."""
+    from fastapi.responses import JSONResponse
+
     agent = get_pdf_agent()
 
-    # Resolve the current user from the optional Bearer token
+    # Resolve user (non-blocking)
     current_user = None
     if credentials:
         try:
@@ -435,57 +819,80 @@ async def upload_pdf(
             if payload:
                 current_user = db.query(User).filter(User.id == int(payload["sub"])).first()
         except Exception:
-            pass  # anonymous upload — continue without DB persistence
+            pass
 
-    # Save file in session-specific directory
+    # Save file to disk (the only synchronous I/O — typically <1s)
     upload_dir = os.path.join("data", "uploads", session_id)
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, file.filename)
 
     try:
-        # Write file to disk
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-
-        # Persist file metadata to DB when the user is authenticated
-        if current_user:
-            try:
-                ws = db.query(Workspace).filter(Workspace.user_id == current_user.id).first()
-                file_size = os.path.getsize(file_path)
-                ext = os.path.splitext(file.filename)[-1].lstrip(".").lower() or "bin"
-                file_record = FileModel(
-                    user_id=current_user.id,
-                    workspace_id=ws.id if ws else None,
-                    filename=os.path.basename(file_path),
-                    original_name=file.filename,
-                    file_type=ext,
-                    mime_type=file.content_type,
-                    size_bytes=file_size,
-                    storage_path=file_path,
-                )
-                db.add(file_record)
-                db.commit()
-            except Exception as db_err:
-                db.rollback()
-                print(f"UPLOAD DB WARNING: {db_err}")  # non-fatal — file is still on disk
-
-        # Index PDF with the RAG agent
-        result = agent.process_pdf_with_name(file_path, session_id, file.filename)
-
-        # Return accessible URL
-        file_url = f"{BACKEND_URL}/api/uploads/{session_id}/{file.filename}"
-
-        return {
-            "message": result,
-            "filename": file.filename,
-            "url": file_url,
-        }
-
     except Exception as e:
-        # Clean up empty files (partial writes)
-        if os.path.exists(file_path) and not os.path.getsize(file_path):
-            os.remove(file_path)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"File write failed: {str(e)}")
+
+    # Quick hash check — if already fully indexed, return immediately
+    try:
+        fhash = _file_content_hash(file_path)
+        if _index_registry.is_analysis_complete(fhash):
+            file_url = f"{BACKEND_URL}/api/uploads/{session_id}/{file.filename}"
+            return JSONResponse(status_code=200, content={
+                "message": "File already indexed.",
+                "filename": file.filename,
+                "url": file_url,
+                "indexing": False,
+            })
+    except Exception:
+        pass
+
+    # Persist file metadata to DB (fast, non-critical)
+    if current_user:
+        try:
+            ws = db.query(Workspace).filter(Workspace.user_id == current_user.id).first()
+            file_size = os.path.getsize(file_path)
+            ext = os.path.splitext(file.filename)[-1].lstrip(".").lower() or "bin"
+            file_record = FileModel(
+                user_id=current_user.id,
+                workspace_id=ws.id if ws else None,
+                filename=os.path.basename(file_path),
+                original_name=file.filename,
+                file_type=ext,
+                mime_type=file.content_type,
+                size_bytes=file_size,
+                storage_path=file_path,
+            )
+            db.add(file_record)
+            db.commit()
+        except Exception as db_err:
+            db.rollback()
+            print(f"UPLOAD DB WARNING: {db_err}")
+
+    # ── FIRE DETACHED THREAD (truly non-blocking) ──
+    # NOTE: use status "queued" (NOT "processing") here. The background thread's
+    # concurrency guard bails if it sees status=="processing", so pre-setting
+    # "processing" made the thread think another worker was already running and
+    # return immediately — nothing ever got indexed (self-deadlock).
+    task_key = f"{session_id}/{file.filename}"
+    with _indexing_lock:
+        indexing_status[task_key] = {"status": "queued", "progress": "queued"}
+
+    worker = threading.Thread(
+        target=_index_pdf_background,
+        args=(agent, file_path, session_id, file.filename),
+        daemon=True,
+    )
+    worker.start()
+
+    # Return 202 Accepted immediately
+    file_url = f"{BACKEND_URL}/api/uploads/{session_id}/{file.filename}"
+    return JSONResponse(status_code=202, content={
+        "message": "File uploaded. Indexing started.",
+        "filename": file.filename,
+        "url": file_url,
+        "session_id": session_id,
+        "indexing": True,
+    })
 
 @app.post("/api/pdf/chat")
 def chat_pdf(
@@ -583,6 +990,27 @@ def chat_pdf(
         print(f"CHAT_PDF ERROR: {str(e)}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")
+
+@app.post("/api/pdf/chat/stream")
+async def chat_pdf_stream(request: PDFChatRequest):
+    """Streaming chat endpoint - returns answer word-by-word via SSE for instant perceived speed."""
+    from fastapi.responses import StreamingResponse
+
+    agent = get_pdf_agent()
+    result = agent.get_response(request.query, request.session_id)
+    answer = result.get("answer", "")
+
+    def generate():
+        import json as _json
+        meta = {k: v for k, v in result.items() if k != "answer"}
+        yield f"data: {_json.dumps({'type': 'meta', 'data': meta})}\n\n"
+        words = answer.split(" ")
+        for i, word in enumerate(words):
+            chunk = word + (" " if i < len(words) - 1 else "")
+            yield f"data: {_json.dumps({'type': 'token', 'data': chunk})}\n\n"
+        yield f"data: {_json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/api/pdf/list/{session_id}")
@@ -1241,5 +1669,113 @@ def generate_quiz(request: QuizRequest):
 
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Document Download & Vector Purge Endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+UPLOAD_BASE_DIR = os.path.join("data", "uploads")
+
+
+@app.get("/api/pdf/download/{session_id}/{file_name}")
+async def download_uploaded_pdf(session_id: str, file_name: str):
+    """Download a previously uploaded PDF by session and filename."""
+    from pathlib import Path
+    file_path = Path(UPLOAD_BASE_DIR) / session_id / file_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="The requested PDF file does not exist on the server.")
+    return FileResponse(path=str(file_path), media_type="application/pdf", filename=file_name)
+
+
+@app.delete("/api/pdf/delete/{file_name}")
+async def delete_uploaded_pdf(file_name: str):
+    """Delete an uploaded PDF by filename (searches all session folders) and purge its vectors."""
+    from pathlib import Path
+
+    # Search for the file across all session directories
+    base = Path(UPLOAD_BASE_DIR)
+    found_path: Optional[Path] = None
+    found_session: Optional[str] = None
+
+    if base.exists():
+        for session_dir in base.iterdir():
+            if session_dir.is_dir():
+                candidate = session_dir / file_name
+                if candidate.exists():
+                    found_path = candidate
+                    found_session = session_dir.name
+                    break
+
+    if not found_path:
+        raise HTTPException(status_code=404, detail="Target file not found.")
+
+    try:
+        os.remove(found_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete file from storage: {str(e)}")
+
+    # Vector purge — remove embeddings and in-memory RAG system for this session
+    try:
+        agent = get_pdf_agent()
+        if found_session and found_session in agent.systems:
+            system = agent.systems[found_session]
+            if hasattr(system, "vector_store") and system.vector_store is not None:
+                collection = getattr(system.vector_store, "_collection", None)
+                if collection is not None:
+                    collection.delete(where={"source": file_name})
+            del agent.systems[found_session]
+            if found_session in agent.uploaded_files:
+                files = agent.uploaded_files[found_session]
+                if file_name in files:
+                    files.remove(file_name)
+        print(f"Vector embeddings for '{file_name}' purged successfully.")
+    except Exception as e:
+        print(f"Warning: Vector DB purge failed: {str(e)}")
+
+    return {"status": "success", "message": f"File '{file_name}' and its vector context successfully purged."}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 2: Server-Side Session Invalidation
+# ═══════════════════════════════════════════════════════════════════════════
+
+class InvalidateSessionRequest(BaseModel):
+    session_id: str
+
+
+@app.post("/api/pdf/session/invalidate")
+async def invalidate_session(request: InvalidateSessionRequest):
+    """Explicitly invalidate a session: purge in-memory state and registry entries."""
+    sid = request.session_id
+    agent = get_pdf_agent()
+
+    # Remove in-memory RAG system
+    if sid in agent.systems:
+        del agent.systems[sid]
+    if sid in agent.uploaded_files:
+        del agent.uploaded_files[sid]
+
+    # Remove from persistent hash registry
+    _index_registry.remove_by_session(sid)
+
+    # Clear indexing status entries for this session
+    with _indexing_lock:
+        keys_to_remove = [k for k in indexing_status if k.startswith(f"{sid}/")]
+        for k in keys_to_remove:
+            del indexing_status[k]
+
+    return {"status": "invalidated", "session_id": sid}
+
+
+@app.post("/api/pdf/session/create")
+async def create_session():
+    """Create a fresh server-acknowledged session ID."""
+    new_id = str(uuid.uuid4())
+    return {"session_id": new_id, "status": "active"}
+
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # reload=True restarts the server on ANY file change, wiping in-memory session
+    # state (agent.systems / indexing_status) and causing stuck spinners. Default to
+    # stable; opt into autoreload only for active development via UVICORN_RELOAD=true.
+    _reload = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=_reload)

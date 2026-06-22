@@ -1,6 +1,8 @@
-// ─── PDF Upload Store — persists upload sessions across page refreshes ────────
+// ─── PDF Upload Store — Production Session Management ─────────────────────────
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export interface PdfFile {
   id: string;
@@ -8,17 +10,18 @@ export interface PdfFile {
   size: string;
   status: 'uploading' | 'ready' | 'error';
   url?: string;
-  /** Each file gets its own agent session so it can be chatted with independently */
   sessionId: string;
 }
+
+type SessionIntent = 'restore' | 'fresh';
 
 interface PdfUploadState {
   files: PdfFile[];
   activeFileId: string | null;
-  /** Tracks which file sessionIds have been re-indexed after a page refresh */
   reindexedSessions: string[];
-  /** Chat messages keyed by file id — each file has its own conversation */
   chatMessages: Record<string, { role: 'user' | 'ai'; content: string }[]>;
+  /** Controls whether hydration from storage is allowed */
+  sessionIntent: SessionIntent;
 
   // Actions
   setFiles: (files: PdfFile[]) => void;
@@ -31,15 +34,38 @@ interface PdfUploadState {
   setChatMessagesForFile: (fileId: string, msgs: { role: 'user' | 'ai'; content: string }[]) => void;
   restoreSession: (files: PdfFile[], activeFileId: string | null) => void;
   newSession: () => void;
+  hardReset: () => void;
 }
+
+// ─── Hydration-Gated Storage Adapter ──────────────────────────────────────────
+// Reads are blocked when sessionIntent === 'fresh', preventing stale rehydration.
+const gatedStorage: StateStorage = {
+  getItem: (name: string): string | null => {
+    const intentFlag = localStorage.getItem('data2dash-session-intent');
+    if (intentFlag === 'fresh') {
+      // Block hydration — user requested a clean session
+      localStorage.removeItem('data2dash-session-intent');
+      localStorage.removeItem(name);
+      return null;
+    }
+    return localStorage.getItem(name);
+  },
+  setItem: (name: string, value: string) => {
+    localStorage.setItem(name, value);
+  },
+  removeItem: (name: string) => {
+    localStorage.removeItem(name);
+  },
+};
 
 export const usePdfStore = create<PdfUploadState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       files: [],
       activeFileId: null,
       reindexedSessions: [],
       chatMessages: {},
+      sessionIntent: 'restore' as SessionIntent,
 
       setFiles: (files) => set({ files }),
       addFile: (file) => set((s) => ({ files: [...s.files, file] })),
@@ -75,21 +101,71 @@ export const usePdfStore = create<PdfUploadState>()(
         chatMessages: { ...s.chatMessages, [fileId]: msgs },
       })),
       restoreSession: (files, activeFileId) =>
-        set({ files, activeFileId, reindexedSessions: [], chatMessages: {} }),
-      newSession: () =>
-        set({
+        set({ files, activeFileId, reindexedSessions: [], chatMessages: {}, sessionIntent: 'restore' }),
+
+      newSession: () => {
+        // Set intent flag BEFORE clearing — blocks next hydration cycle
+        localStorage.setItem('data2dash-session-intent', 'fresh');
+        localStorage.removeItem('data2dash-pdf-upload');
+
+        // Invalidate all active sessions on the backend
+        const currentFiles = get().files;
+        const sessionIds = [...new Set(currentFiles.map(f => f.sessionId))];
+        for (const sid of sessionIds) {
+          fetch(`${API_URL}/api/pdf/session/invalidate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sid }),
+          }).catch(() => {});
+        }
+
+        return set({
           files: [],
           activeFileId: null,
           reindexedSessions: [],
           chatMessages: {},
-        }),
+          sessionIntent: 'fresh',
+        });
+      },
+
+      hardReset: () => {
+        localStorage.setItem('data2dash-session-intent', 'fresh');
+        try {
+          Object.keys(localStorage).forEach(key => {
+            if (key.includes('pdf') || key.includes('session') || key.includes('data2dash')) {
+              localStorage.removeItem(key);
+            }
+          });
+        } catch {}
+
+        // Invalidate all sessions server-side
+        const currentFiles = get().files;
+        const sessionIds = [...new Set(currentFiles.map(f => f.sessionId))];
+        for (const sid of sessionIds) {
+          fetch(`${API_URL}/api/pdf/session/invalidate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sid }),
+          }).catch(() => {});
+        }
+
+        return set({
+          files: [],
+          activeFileId: null,
+          reindexedSessions: [],
+          chatMessages: {},
+          sessionIntent: 'fresh',
+        });
+      },
     }),
     {
       name: 'data2dash-pdf-upload',
+      storage: createJSONStorage(() => gatedStorage),
       partialize: (state) => ({
         files: state.files.filter((f) => f.status === 'ready'),
         activeFileId: state.activeFileId,
         chatMessages: state.chatMessages,
+        sessionIntent: state.sessionIntent,
       }),
     },
   ),
