@@ -57,7 +57,7 @@ class QueryConfig:
     top_k_rerank: int = 6
 
     # Synthesis model
-    synthesis_model: str = "llama-3.1-8b-instant"
+    synthesis_model: str = "gemma2-9b-it"
 
 
 # ---------------------------------------------------------------------------

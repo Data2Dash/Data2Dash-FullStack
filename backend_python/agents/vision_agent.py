@@ -53,15 +53,15 @@ class VisionAgent:
                 image_bytes = base_image["image"]
                 
                 # Filter by byte size and dimensions
-                # Most real diagrams are > 20KB and have reasonable dimensions
-                if len(image_bytes) < 20000:
+                # Real diagrams can sometimes be quite small in file size or dimensions
+                if len(image_bytes) < 1000:
                     continue
                 
                 try:
                     img_data = Image.open(io.BytesIO(image_bytes))
                     width, height = img_data.size
-                    # Filter out logos/icons (usually small square or very thin lines)
-                    if width < 150 or height < 150:
+                    # Filter out tiny logos/icons/lines
+                    if width < 20 or height < 20:
                         continue
                 except:
                     continue
@@ -98,22 +98,26 @@ class VisionAgent:
         
         prompt = user_query if user_query else "Explain this figure or image from a research paper in detail. What are the key findings or data points shown?"
         
-        chat_completion = self.client.chat.completions.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{mime_type};base64,{base64_image}",
+        try:
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime_type};base64,{base64_image}",
+                                },
                             },
-                        },
-                    ],
-                }
-            ],
-            model=self.model,
-        )
-        
-        return chat_completion.choices[0].message.content
+                        ],
+                    }
+                ],
+                model=self.model,
+            )
+            
+            return chat_completion.choices[0].message.content
+        except Exception as e:
+            print(f"DEBUG ERROR: Vision model failed: {e}")
+            return "Vision models are currently unavailable on this platform (model decommissioned). Unfortunately, I cannot visually analyze this figure at the moment. Please refer to the text in the paper describing this figure."

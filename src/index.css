@@ -8,11 +8,68 @@
   body {
     @apply bg-stone-50 text-stone-900 antialiased;
     font-family: 'Inter', system-ui, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   * {
     @apply border-stone-200;
   }
+
+  /* ── Dark mode ─────────────────────────────────────────────────────── */
+  .dark body {
+    @apply bg-zinc-950 text-zinc-100;
+  }
+  .dark * {
+    @apply border-zinc-700;
+  }
+
+  /* Navbar */
+  .dark nav {
+    background: rgba(15, 15, 20, 0.92) !important;
+    border-bottom-color: rgba(63, 63, 70, 0.6) !important;
+  }
+
+  /* Surfaces */
+  .dark .bg-white { background-color: #18181b !important; }
+  .dark .bg-stone-50  { background-color: #0f0f11 !important; }
+  .dark .bg-stone-100 { background-color: #1c1c21 !important; }
+  .dark .bg-stone-200 { background-color: #27272a !important; }
+
+  /* Text */
+  .dark .text-stone-900 { color: #f4f4f5 !important; }
+  .dark .text-stone-700 { color: #d4d4d8 !important; }
+  .dark .text-stone-600 { color: #a1a1aa !important; }
+  .dark .text-stone-500 { color: #71717a !important; }
+  .dark .text-stone-400 { color: #52525b !important; }
+
+  /* Borders */
+  .dark .border-stone-100 { border-color: #27272a !important; }
+  .dark .border-stone-200 { border-color: #3f3f46 !important; }
+  .dark .border-stone-300 { border-color: #52525b !important; }
+
+  /* Cards / panels */
+  .dark .shadow-panel { box-shadow: 0 4px 24px -4px rgba(0,0,0,0.5) !important; }
+
+  /* Hover tints */
+  .dark .hover\:bg-stone-50:hover  { background-color: #27272a !important; }
+  .dark .hover\:bg-stone-100:hover { background-color: #3f3f46 !important; }
+
+  /* Prose tables */
+  .dark .prose thead th { background: #27272a; border-color: #52525b; color: #d4d4d8; }
+  .dark .prose tbody td { border-color: #3f3f46; color: #a1a1aa; }
+  .dark .prose tbody tr:nth-child(even) td { background: #1c1c21; }
+  .dark .prose tbody tr:hover td { background: #1e2a22; }
+
+  /* Code blocks */
+  .dark .prose code:not([class*="language-"]) {
+    background: #27272a;
+    color: #a3e635;
+    border-color: #3f3f46;
+  }
+
+  /* Scrollbar in dark mode */
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #52525b; }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #71717a; }
 }
 
 @layer utilities {
@@ -163,4 +220,62 @@
   overflow-x: auto;
   padding: 0.5rem 0;
   text-align: center;
+}
+
+/* ── KaTeX equation block wrapper ──────────────────────────────────────── */
+.katex-display-wrapper {
+  overflow-x: auto;
+  text-align: center;
+  padding: 0.25rem 0;
+}
+.katex-display-wrapper .katex-display {
+  margin: 0;
+}
+
+/* ── Equation display blocks (standalone $$ ... $$) ────────────────────── */
+.prose .math-display .katex-display,
+.katex-display-wrapper .katex-display {
+  font-size: 1.1em;
+}
+
+/* ── Inline KaTeX sizing ────────────────────────────────────────────────── */
+.prose .katex {
+  font-size: 1em;
+}
+
+/* ── Improved prose inline code ─────────────────────────────────────────── */
+.prose code:not([class*="language-"]) {
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.3rem;
+  padding: 0.1em 0.4em;
+  font-size: 0.85em;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ── Equation card hover glow ───────────────────────────────────────────── */
+.equation-block-hover {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.equation-block-hover:hover {
+  box-shadow: 0 4px 20px -4px rgba(109, 40, 217, 0.15);
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+/* ── Table block hover glow ─────────────────────────────────────────────── */
+.table-block-hover:hover {
+  box-shadow: 0 4px 20px -4px rgba(5, 150, 105, 0.15);
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+/* ── No scrollbar utility (tab bars) ───────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Toast progress bar animation ──────────────────────────────────────── */
+@keyframes toast-progress {
+  from { transform: scaleX(1); transform-origin: left; }
+  to   { transform: scaleX(0); transform-origin: left; }
 }

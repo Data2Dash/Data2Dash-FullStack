@@ -212,7 +212,8 @@ class AdvancedResponseFormatter:
     def _is_specific_equation_request(self, q: str) -> bool:
         if any(k in q for k in self.eq_keywords):
             return True
-        if re.search(r"\bequation\s+\d+\b", q):
+        # Matches: "equation 1", "equation(1)", "equation (1)", "eq.1", "eq.(1)"
+        if re.search(r"\b(?:equation|eq\.?)\s*[\(\[]?\s*\d+\s*[\)\]]?", q, re.IGNORECASE):
             return True
         if re.search(r"p[_\s-]*eta|pη|p[_\s-]*theta|pθ|d\(z\)|q\(x\)|rag-token|rag token|rag sequence|rag-sequence", q):
             return True
@@ -241,7 +242,7 @@ class AdvancedResponseFormatter:
             return ""
         text = re.sub(r"\bShort Summary\s+Short\b", "Short Summary", text, flags=re.I)
         text = re.sub(r"\bExplanation\s+Short\b", "Explanation", text, flags=re.I)
-        text = re.sub(r"\$\$.*?\$\$", "", text, flags=re.S)
+        # NOTE: Do NOT strip $$...$$ blocks here — they are valid LaTeX equation displays
         text = re.sub(r"```(?:latex|math|text)?\n.*?```", "", text, flags=re.S)
         text = text.replace("\r", "\n")
         text = re.sub(r"\n{3,}", "\n\n", text)
@@ -296,6 +297,37 @@ class AdvancedResponseFormatter:
     # Equation helpers
     # ------------------------------------------------------------------
 
+    def _clean_latex(self, raw: str) -> str:
+        """
+        Remove common PDF-extraction artifacts from a raw LaTeX / equation string:
+        - Leading equation-number prefixes like "12 :" or "(4)"
+        - Trailing non-math noise like section headings appended after the formula
+        - Garbled \xiki / \xik artifacts
+        """
+        if not raw:
+            return raw
+        text = raw.strip()
+
+        # Strip leading equation number prefix:  "12 : " or "(12) " or "12. "
+        text = re.sub(r'^\(?\d{1,3}\)?\s*[:.]\s*', '', text)
+
+        # Strip trailing appended section title / garbage after a recognisable
+        # LaTeX terminal: closing brace/bracket/paren followed by non-math words.
+        # E.g. "...xi_i^k13 : (4)Normalizationandaggregation" → strip everything
+        # from a bare number + colon + non-LaTeX text run
+        text = re.sub(r'\d+\s*:\s*\(\d+\)[A-Za-z].*$', '', text)
+        text = re.sub(r'\d+\s*:\s*\(\d+\)\s*$', '', text)
+
+        # Fix garbled \xiki or \xik artifact produced by certain PDF extractors
+        # The real symbol is \xi_i^k  (membership set ξ_i^k)
+        text = re.sub(r'\\xiki?\b', r'\\xi_i^{k}', text)
+        text = re.sub(r'\\xi\s*i\s*k\b', r'\\xi_i^{k}', text)
+
+        # Remove stray trailing equation numbers:  "...}  (4)" at end of string
+        text = re.sub(r'\s*\(\d{1,3}[a-z]?\)\s*$', '', text)
+
+        return text.strip()
+
     def _normalize_equations(self, equations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         norm = []
         for eq in equations or []:
@@ -306,6 +338,10 @@ class AdvancedResponseFormatter:
                 item["normalized_latex"] = item["latex"]
             if not item.get("raw_text") and item.get("text"):
                 item["raw_text"] = item["text"]
+            # Clean corrupted LaTeX before it reaches the renderer
+            for key in ("normalized_latex", "latex"):
+                if item.get(key):
+                    item[key] = self._clean_latex(item[key])
             norm.append(item)
 
         def sort_key(x):
@@ -335,12 +371,20 @@ class AdvancedResponseFormatter:
             ]).lower()
 
             score = 0
-            m = re.search(r"\bequation\s+(\d+)\b", query)
+
+            # ── Exact equation number matching ──────────────────────────────
+            # Handles all of: "equation 1", "equation(1)", "equation (1)",
+            # "eq. 1", "eq.(1)", "Equation1" etc.
+            m = re.search(
+                r"\b(?:equation|eq\.?)\s*[\(\[]?\s*(\d+)\s*[\)\]]?",
+                query,
+                re.IGNORECASE,
+            )
             if m:
                 qn = int(m.group(1))
                 en = eq.get("global_number") or self._extract_number(eq.get("label", ""))
                 if en == qn:
-                    score += 100
+                    score += 100   # Exact hit — this equation wins
 
             if any(k in query for k in ["mips", "inner product", "d(z)", "q(x)", "document encoder", "query encoder"]):
                 if any(k in text for k in ["d(z)", "q(x)", "exp", "⊤", "bert"]):

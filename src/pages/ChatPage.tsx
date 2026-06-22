@@ -2,63 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUp, BookOpen, MessageCircle, Sparkles, FileText, Globe, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
-import { codeComponents } from '../components/ui/CodeBlock';
-import { cleanTableMarkdown } from '../utils/tableUtils';
-import { normalizeEquations } from '../utils/mathUtils';
+import { AiMessageRenderer } from '../components/ui/AiMessageRenderer';
 import { useChatStore, Message } from '../store/useChatStore';
 import { useAuthStore } from '../store/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-function EquationBlock({ eq }: { eq: any }) {
-  const label = eq.label ?? `Equation ${eq.global_number ?? '?'}`;
-  const latex = eq.normalized_latex || eq.latex || '';
-  const raw = eq.raw_text || eq.text || '';
 
-  return (
-    <div className="my-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
-      <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-1">
-        📐 {label}{eq.page_number != null ? ` · Page ${eq.page_number}` : ''}
-      </p>
-      {latex ? (
-        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]} components={codeComponents}>
-          {`$$\n${latex}\n$$`}
-        </ReactMarkdown>
-      ) : raw ? (
-        <pre className="text-sm text-slate-700 overflow-x-auto whitespace-pre-wrap">{raw}</pre>
-      ) : null}
-    </div>
-  );
-}
-
-function TableBlock({ tb }: { tb: any }) {
-  const label = tb.label ?? `Table ${tb.global_number ?? '?'}`;
-  const caption = tb.caption ?? label;
-  const md = tb.markdown ?? '';
-  const raw = tb.raw_text ?? '';
-
-  return (
-    <div className="my-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 overflow-x-auto">
-      <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">
-        📊 {label}{caption && caption !== label ? ` — ${caption}` : ''}{tb.page_number != null ? ` · Page ${tb.page_number}` : ''}
-      </p>
-      {md ? (
-        <div className="prose prose-sm max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={codeComponents}>
-            {md}
-          </ReactMarkdown>
-        </div>
-      ) : raw ? (
-        <pre className="text-xs text-slate-700 overflow-x-auto whitespace-pre-wrap">{raw}</pre>
-      ) : null}
-    </div>
-  );
-}
 
 export function ChatPage() {
   const { 
@@ -298,36 +248,18 @@ export function ChatPage() {
                       "px-6 py-4 rounded-2xl max-w-[85%] shadow-sm transition-shadow hover:shadow-md",
                       msg.role === 'user'
                         ? "bg-slate-900 text-white rounded-tr-sm font-medium"
-                        : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm prose prose-slate max-w-none prose-sm"
+                        : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm"
                     )}>
                       {msg.role === 'ai' ? (
                         <>
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                            components={codeComponents}
-                          >
-                            {cleanTableMarkdown(normalizeEquations(msg.content))}
-                          </ReactMarkdown>
-
-                          {msg.equations && msg.equations.length > 0 && (
-                            <div className="mt-4 space-y-3 not-prose">
-                              {msg.equations.map((eq: any, eIdx: number) => (
-                                <EquationBlock key={eIdx} eq={eq} />
-                              ))}
-                            </div>
-                          )}
-
-                          {msg.tables && msg.tables.length > 0 && (
-                            <div className="mt-4 space-y-3 not-prose">
-                              {msg.tables.map((tb: any, tIdx: number) => (
-                                <TableBlock key={tIdx} tb={tb} />
-                              ))}
-                            </div>
-                          )}
+                          <AiMessageRenderer
+                            content={msg.content}
+                            equations={msg.equations}
+                            tables={msg.tables}
+                          />
 
                           {msg.sources && msg.sources.length > 0 && (
-                            <div className="mt-6 pt-4 border-t border-slate-100 flex flex-wrap gap-2 not-prose">
+                            <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap gap-2">
                               {msg.sources.map((source: string, sIdx: number) => {
                                 const parts = source.split(':');
                                 const type = parts[0];

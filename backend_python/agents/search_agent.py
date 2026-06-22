@@ -11,13 +11,14 @@ import arxiv
 from collections import defaultdict, Counter
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
+from .model_router import get_groq_llm
 
 
 class SearchAgent:
     def __init__(self, groq_api_key: str = None):
         if not groq_api_key:
             groq_api_key = os.getenv("GROQ_API_KEY")
-        self.llm = ChatGroq(groq_api_key=groq_api_key, model_name="llama-3.1-8b-instant", temperature=0)
+        self.llm = get_groq_llm(preferred_model="llama-3.1-8b-instant", temperature=0, groq_api_key=groq_api_key)
         api_wrapper_wiki = WikipediaAPIWrapper(top_k_results=2, doc_content_chars_max=1500)
         self.wiki = WikipediaQueryRun(api_wrapper=api_wrapper_wiki)
         self.arxiv_tool = ArxivQueryRun()

@@ -26,7 +26,7 @@ def render_app():
         model = st.selectbox("Model", [
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
+            "llama-3.3-70b-versatile",
         ], help="llama-3.3-70b = best quality · llama-3.1-8b = saves tokens")
         st.divider()
         st.markdown("**How it works:**")

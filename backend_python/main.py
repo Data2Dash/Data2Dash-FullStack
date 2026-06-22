@@ -17,6 +17,7 @@ from agents.search_agent import SearchAgent
 from agents.chat_agent import ChatAgent
 from agents.podcast_agent import PodcastAgent
 from agents.youtube_agent import YouTubeAgent
+from agents.video_agent import VideoAgent
 from agents.vision_agent import VisionAgent
 from agents.citation_agent import CitationAgent
 from agents.quiz_agent import QuizAgent
@@ -81,7 +82,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers (second reference removed — already registered above)
+# Register routers
 
 # Create directories
 os.makedirs("data/uploads", exist_ok=True)
@@ -107,9 +108,11 @@ youtube_agent = None
 vision_agent = None
 citation_agent = None
 quiz_agent = None
+video_agent = None
 
-# Podcast task storage
+# Task storage
 podcast_tasks: Dict[str, dict] = {}
+video_tasks: Dict[str, dict] = {}
 
 def get_pdf_agent():
     global pdf_agent
@@ -176,6 +179,14 @@ def get_quiz_agent():
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
         quiz_agent = QuizAgent(groq_api_key=GROQ_API_KEY)
     return quiz_agent
+
+def get_video_agent():
+    global video_agent
+    if video_agent is None:
+        if not GROQ_API_KEY:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+        video_agent = VideoAgent(groq_api_key=GROQ_API_KEY)
+    return video_agent
 
 # Pydantic Models
 class SearchRequest(BaseModel):
@@ -482,18 +493,17 @@ def chat_pdf(
     db: Session = Depends(get_db),
     credentials = Depends(bearer_scheme),
 ):
-    agent = get_pdf_agent()
+    pdf_ag   = get_pdf_agent()
+    chat_ag  = get_chat_agent()
     try:
         # Use the session_id as-is for the agent (it's an in-memory key).
-        # Only normalise to UUID format for DB storage if it looks like one.
-        agent_sid = request.session_id  # raw key used in agent.systems dict
+        agent_sid = request.session_id
         try:
-            db_sid = str(uuid.UUID(request.session_id))  # normalized UUID for DB
+            db_sid = str(uuid.UUID(request.session_id))
         except (ValueError, AttributeError):
-            # Not a valid UUID — generate a deterministic one from the raw id
             db_sid = str(uuid.uuid5(uuid.NAMESPACE_DNS, request.session_id))
 
-        # Resolve the current user (optional — upload endpoint is unauthenticated)
+        # Resolve the current user (optional)
         current_user = None
         if credentials:
             try:
@@ -501,9 +511,9 @@ def chat_pdf(
                 if payload:
                     current_user = db.query(User).filter(User.id == int(payload["sub"])).first()
             except Exception:
-                pass  # proceed without auth
+                pass
 
-        # Persist chat session to DB only when we have a logged-in user
+        # Persist user message
         if current_user:
             session = db.query(ChatSession).filter(ChatSession.session_id == db_sid).first()
             if not session:
@@ -527,18 +537,31 @@ def chat_pdf(
             )
             db.add(user_msg)
 
-        # Get response from the agent using the original session key
-        result = agent.get_response(request.query, agent_sid)
+        # Two-stage pipeline:
+        # Stage 1 — RAG retrieval (structured: answer text + equations + tables)
+        # Stage 2 — LLM formatting via chat_agent (grounded, clean markdown output)
+        result = chat_ag.run(
+            query=request.query,
+            history=[],
+            session_id=agent_sid,
+            pdf_agent_instance=pdf_ag,
+        )
+
+        # Normalise output keys so frontend always sees {answer, equations, tables, sources}
+        answer    = result.get("response") or result.get("answer") or ""
+        equations = result.get("equations", [])
+        tables    = result.get("tables", [])
+        sources   = result.get("sources", [])
 
         if current_user:
             ai_msg = ChatMessage(
                 session_id=db_sid,
                 sender_type=SenderType.agent,
-                content=result.get("answer", ""),
+                content=answer,
                 message_metadata={
-                    "equations": result.get("equations", []),
-                    "tables": result.get("tables", []),
-                    "sources": result.get("sources", [])
+                    "equations": equations,
+                    "tables":    tables,
+                    "sources":   sources,
                 }
             )
             db.add(ai_msg)
@@ -546,7 +569,12 @@ def chat_pdf(
                 session.last_message_at = func.now()
             db.commit()
 
-        return result
+        return {
+            "answer":    answer,
+            "equations": equations,
+            "tables":    tables,
+            "sources":   sources,
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -555,6 +583,7 @@ def chat_pdf(
         print(f"CHAT_PDF ERROR: {str(e)}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")
+
 
 @app.get("/api/pdf/list/{session_id}")
 def list_pdfs(session_id: str):
@@ -601,10 +630,17 @@ async def reindex_pdf(request: PDFReindexRequest):
 # Figure Analysis Endpoints
 
 @app.get("/api/pdf/figures")
-def get_figures(session_id: str, filename: str):
+def get_figures(session_id: str, filename: str, pdf_url: Optional[str] = None):
     """Extract and list figures from a PDF"""
     agent = get_vision_agent()
     pdf_path = os.path.join("data", "uploads", session_id, filename)
+    
+    try:
+        ensure_pdf_exists(pdf_path, pdf_url)
+    except Exception as e:
+        # Ignore ensure error if file actually exists, else raise
+        if not os.path.exists(pdf_path):
+            raise
     
     if not os.path.exists(pdf_path):
         raise HTTPException(status_code=404, detail="PDF not found")
@@ -649,14 +685,26 @@ class KGChatRequest(BaseModel):
 
 import requests
 
+import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 def ensure_pdf_exists(pdf_path: str, pdf_url: Optional[str]):
     if not os.path.exists(pdf_path):
         if pdf_url:
             try:
                 os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-                # Some academic firewalls require user-agent
-                h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-                r = requests.get(pdf_url, headers=h, timeout=15)
+                
+                # Setup session with retry logic
+                session = requests.Session()
+                retry = Retry(connect=3, backoff_factor=0.5, status_forcelist=[ 500, 502, 503, 504 ])
+                adapter = HTTPAdapter(max_retries=retry)
+                session.mount('http://', adapter)
+                session.mount('https://', adapter)
+                
+                h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+                # Longer timeout to handle slow ArXiv responses
+                r = session.get(pdf_url, headers=h, timeout=30)
                 r.raise_for_status()
                 with open(pdf_path, 'wb') as f:
                     f.write(r.content)
@@ -680,7 +728,7 @@ def extract_summary(request: SummarizeRequest):
                 pdf_path,
                 output_path,
                 os.getenv("GROQ_API_KEY", ""),
-                "llama-3.1-8b-instant"
+                "gemma2-9b-it"
             ]
             
             proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -727,7 +775,7 @@ def compare_papers(request: CompareRequest):
                 pdf_path_b,
                 output_path,
                 os.getenv("GROQ_API_KEY", ""),
-                "llama-3.1-8b-instant"
+                "gemma2-9b-it"
             ]
             
             proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -1021,6 +1069,87 @@ def download_podcast(task_id: str):
         headers={
             "Content-Disposition": f"attachment; filename=podcast_{task_id}.mp3"
         }
+    )
+
+# ── Video Endpoints ──────────────────────────────────────────────────────────
+
+class VideoGenerateRequest(BaseModel):
+    paper_content: str
+    paper_title: str = ""
+    num_slides: int = 7
+    voice: str = "en-US-AndrewNeural"
+
+class VideoGenerateResponse(BaseModel):
+    task_id: str
+    status: str
+    message: str
+
+class VideoStatusResponse(BaseModel):
+    task_id: str
+    status: str  # pending | processing | completed | failed
+    progress: int
+    message: str
+    video_url: Optional[str] = None
+
+async def _run_video_task(task_id: str, request: VideoGenerateRequest):
+    try:
+        agent = get_video_agent()
+        video_tasks[task_id]["status"] = "processing"
+        video_tasks[task_id]["message"] = "Starting…"
+
+        def _prog(msg: str, pct: int):
+            video_tasks[task_id]["progress"] = pct
+            video_tasks[task_id]["message"] = msg
+
+        full_text = f"{request.paper_title}\n\n{request.paper_content}" if request.paper_title else request.paper_content
+        video_bytes = agent.generate_video(
+            text=full_text,
+            num_slides=max(4, min(12, request.num_slides)),
+            voice=request.voice,
+            progress_callback=_prog,
+        )
+        video_tasks[task_id]["status"] = "completed"
+        video_tasks[task_id]["progress"] = 100
+        video_tasks[task_id]["message"] = "Video ready!"
+        video_tasks[task_id]["video_data"] = video_bytes
+    except Exception as e:
+        video_tasks[task_id]["status"] = "failed"
+        video_tasks[task_id]["message"] = f"Error: {str(e)}"
+        video_tasks[task_id]["progress"] = 0
+
+@app.post("/api/video/generate")
+async def generate_video(request: VideoGenerateRequest, background_tasks: BackgroundTasks):
+    task_id = str(uuid.uuid4())
+    video_tasks[task_id] = {"status": "pending", "progress": 0, "message": "Queued", "video_data": None}
+    background_tasks.add_task(_run_video_task, task_id, request)
+    return VideoGenerateResponse(task_id=task_id, status="pending", message="Video generation started")
+
+@app.get("/api/video/status/{task_id}")
+def get_video_status(task_id: str):
+    if task_id not in video_tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    t = video_tasks[task_id]
+    return VideoStatusResponse(
+        task_id=task_id,
+        status=t["status"],
+        progress=t["progress"],
+        message=t["message"],
+        video_url=f"/api/video/download/{task_id}" if t["status"] == "completed" else None,
+    )
+
+@app.get("/api/video/download/{task_id}")
+def download_video(task_id: str):
+    if task_id not in video_tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    t = video_tasks[task_id]
+    if t["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Video not ready yet")
+    if not t["video_data"]:
+        raise HTTPException(status_code=500, detail="Video data missing")
+    return Response(
+        content=t["video_data"],
+        media_type="video/mp4",
+        headers={"Content-Disposition": f"attachment; filename=presentation_{task_id}.mp4"},
     )
 
 # YouTube Endpoints

@@ -411,7 +411,12 @@ export function PdfAnalysis() {
               // Persist chat messages to the store for this specific file
               addChatMessage(currentFile.id, { role: 'user', content: message });
               addChatMessage(currentFile.id, { role: 'ai', content: response });
-              return { response, sources: data.sources };
+              return {
+                response,
+                sources: data.sources,
+                equations: data.equations,
+                tables: data.tables,
+              };
             }}
           />
         </div>

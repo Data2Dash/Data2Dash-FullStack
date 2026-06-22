@@ -70,7 +70,7 @@ def chat_completion(
 
         except RateLimitError as exc:
             # Auto-fallback: try a smaller model before giving up
-            FALLBACK_MODELS = ["llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+            FALLBACK_MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
             current_model = settings.groq_model
             for fallback in FALLBACK_MODELS:
                 if fallback == current_model:

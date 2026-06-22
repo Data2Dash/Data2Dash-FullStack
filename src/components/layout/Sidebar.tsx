@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { 
   MessageSquare, Search, Upload, BookMarked, Home, 
-  Plus, FileText, Clock, Zap, FolderOpen, LogOut, Sparkles 
+  Plus, FileText, LogOut, Sparkles 
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -62,7 +62,6 @@ export function Sidebar({ summary }: SidebarProps) {
     try {
       const data = await workspaceApi.getSessionMessages(sid, token);
       setSessionId(sid);
-      // Map API response to the Message shape expected by useChatStore
       const mapped = (data.messages || []).map((m: any) => ({
         role: m.role as 'user' | 'ai',
         content: m.content ?? '',
@@ -110,7 +109,6 @@ export function Sidebar({ summary }: SidebarProps) {
                 <button
                   key={s.search_id}
                   onClick={() => {
-                    // Restore local cached results if available, then navigate
                     const local = searchSessions.find(ls => ls.query === s.query_text);
                     if (local) loadSession(local.id);
                     navigate('/search');
@@ -133,10 +131,8 @@ export function Sidebar({ summary }: SidebarProps) {
     }
 
     if (path === '/upload') {
-      // Extract session_id from storage_path: "data/uploads/{session_id}/{filename}" or "data\uploads\{sid}\{fname}"
       const handleFileRestore = async (file: typeof summary.recent_files[0]) => {
         const parts = file.storage_path.replace(/\\/g, '/').split('/');
-        // Find the segment after "uploads"
         const uploadsIdx = parts.findIndex(p => p === 'uploads');
         const sid = uploadsIdx >= 0 && parts.length > uploadsIdx + 1 ? parts[uploadsIdx + 1] : null;
         if (!sid) return;
@@ -144,16 +140,13 @@ export function Sidebar({ summary }: SidebarProps) {
         const url = `${API_URL}/api/uploads/${sid}/${file.filename}`;
         const sizeStr = `${(file.size_bytes / 1024 / 1024).toFixed(1)} MB`;
 
-        // Restore the session in the PDF store
         pdfStore.restoreSession(
           [{ id: `${file.filename}_restored`, name: file.original_name, size: sizeStr, status: 'ready', url, sessionId: sid }],
           `${file.filename}_restored`,
         );
 
-        // Load any previous chat messages for this session from the DB
         if (token) {
           try {
-            // Find a PDF session matching this session_id
             const pdfSessions = summary?.recent_sessions?.filter(s => s.session_type === 'pdf') || [];
             for (const sess of pdfSessions) {
               if (sess.session_id === sid) {
@@ -162,7 +155,8 @@ export function Sidebar({ summary }: SidebarProps) {
                   role: m.role as 'user' | 'ai',
                   content: m.content ?? '',
                 }));
-                pdfStore.setChatMessages(mapped);
+                const restoredFileId = `${file.filename}_restored`;
+                pdfStore.setChatMessagesForFile(restoredFileId, mapped);
                 break;
               }
             }
@@ -174,7 +168,6 @@ export function Sidebar({ summary }: SidebarProps) {
         if (path !== '/upload') navigate('/upload');
       };
 
-      // Handle clicking a PDF chat session
       const handlePdfSessionClick = async (sess: typeof summary.recent_sessions[0]) => {
         if (!token) return;
         try {
@@ -184,7 +177,6 @@ export function Sidebar({ summary }: SidebarProps) {
             content: m.content ?? '',
           }));
 
-          // Find the file for this session from the files list
           const matchingFile = summary?.recent_files?.find(f => {
             const parts = f.storage_path.replace(/\\/g, '/').split('/');
             const uploadsIdx = parts.findIndex(p => p === 'uploads');
@@ -201,10 +193,11 @@ export function Sidebar({ summary }: SidebarProps) {
               `${matchingFile.filename}_restored`,
             );
           } else {
-            // No file match — just set the session and messages
             pdfStore.restoreSession([], null);
           }
-          pdfStore.setChatMessages(mapped);
+          if (matchingFile) {
+            pdfStore.setChatMessagesForFile(`${matchingFile.filename}_restored`, mapped);
+          }
 
           if (path !== '/upload') navigate('/upload');
         } catch (err) {
@@ -216,7 +209,6 @@ export function Sidebar({ summary }: SidebarProps) {
 
       return (
         <>
-          {/* Recent uploaded files */}
           <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Recent Uploads</p>
           <div className="space-y-1">
             {summary?.recent_files?.length
@@ -234,7 +226,6 @@ export function Sidebar({ summary }: SidebarProps) {
             }
           </div>
 
-          {/* PDF chat sessions */}
           {pdfSessions.length > 0 && (
             <>
               <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 mt-5 px-1">PDF Chats</p>
@@ -245,7 +236,7 @@ export function Sidebar({ summary }: SidebarProps) {
                     onClick={() => handlePdfSessionClick(s)}
                     className={clsx(
                       "w-full text-left px-3 py-2 rounded-xl text-sm font-medium truncate flex items-center gap-2 transition-colors",
-                      pdfStore.sessionId === s.session_id
+                      pdfStore.files.find(f => f.id === pdfStore.activeFileId)?.sessionId === s.session_id
                         ? "bg-stone-900 text-white shadow-soft"
                         : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
                     )}

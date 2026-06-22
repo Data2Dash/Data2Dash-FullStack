@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PipelineConfig:
-    model_name: str = "mixtral-8x7b-32768"
+    model_name: str = "llama-3.1-8b-instant"
     temperature: float = 0.0
     max_chunk_chars_for_llm: int = 6000
 

@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class EnhancedRAGConfig:
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     groq_model: str = "llama-3.3-70b-versatile"
-    groq_vision_model: str = "llama-3.2-11b-vision-preview"
+    groq_vision_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     chunk_size: int = 1200
     chunk_overlap: int = 150
     top_k: int = 6
@@ -679,6 +679,19 @@ class EnhancedRAGSystem:
                 add(f"{term} definition")
                 add(f"what is {term}")
 
+        # Equation-number specific: normalise "equation(1)" → "equation 1"
+        # so retrieval finds the chunk containing that numbered equation.
+        m_eq = re.search(
+            r"\b(?:equation|eq\.?)\s*[\(\[]?\s*(\d+)\s*[\)\]]?",
+            ql,
+            re.IGNORECASE,
+        )
+        if m_eq:
+            en = m_eq.group(1)
+            add(f"equation {en}")
+            add(f"Equation {en}")
+            add(f"({en})")  # many papers number equations as "(1)"
+
         if "retrieval supervision" in ql and "fever" in ql:
             add("retrieval supervision FEVER classification both RAG models are equivalent")
             add("FEVER classiﬁcation task both RAG models are equivalent")
@@ -841,27 +854,53 @@ class EnhancedRAGSystem:
 
         system_prompt = self._build_system_prompt(query)
         user_prompt = (
-            f"Question:\n{query}\n\n"
-            f"Document context:\n{context_text}\n\n"
-            "Answer using only the document context. "
-            "When the user asks to explain an equation, explain it in plain language instead of only naming it. "
-            "When the user asks about a term, dataset, or acronym, use the nearby sentence from the paper if available. "
-            "If the information is not present in the context, say exactly: \"The document does not contain this information.\""
+            f"Context from the document:\n---\n{context_text}\n---\n\n"
+            f"User Question: {query}\n\n"
+            "Instructions:\n"
+            "- Answer the user's question directly and concisely based ONLY on the context above.\n"
+            "- Do NOT repeat the prompt, context, or question.\n"
+            "- Do NOT generate a 'Question:' or 'Answer:' prefix.\n"
+            "- Do NOT copy-paste raw markdown tables or large blocks of text verbatim. Instead, explain the data in a clear, readable way.\n"
+            "- When explaining an equation or table, explain its meaning/contents in plain language.\n"
+            "- If the information is not present in the context, say exactly: \"The document does not contain this information.\""
         )
 
         try:
-            completion = self.client.chat.completions.create(
-                model=self.config.groq_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.1,
-                max_tokens=700,
-            )
-            return (completion.choices[0].message.content or "").strip()
-        except Exception as e:
-            logger.warning("Groq generation failed: %s", e)
+            _FALLBACK_CHAIN = [
+                self.config.groq_model,
+                "llama-3.3-70b-versatile",
+                "llama-3.1-8b-instant",
+                "meta-llama/llama-4-scout-17b-16e-instruct",
+                "qwen/qwen3-32b",
+            ]
+            # deduplicate while preserving order
+            seen = set()
+            fallback_chain = [m for m in _FALLBACK_CHAIN if not (m in seen or seen.add(m))]
+
+            last_exc = None
+            for model in fallback_chain:
+                try:
+                    completion = self.client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        temperature=0.1,
+                        max_tokens=700,
+                    )
+                    if model != self.config.groq_model:
+                        logger.info("RAG used fallback model %s (primary %s rate-limited)", model, self.config.groq_model)
+                    return (completion.choices[0].message.content or "").strip()
+                except Exception as exc:
+                    err_str = str(exc)
+                    if "rate_limit" in err_str or "429" in err_str:
+                        logger.warning("Rate limit on %s, trying next model...", model)
+                        last_exc = exc
+                        continue
+                    raise  # non-rate-limit errors bubble up immediately
+
+            logger.warning("All RAG models rate-limited: %s", last_exc)
             return self._fallback_grounded_answer(query, [], equations, tables, figures)
 
     def _build_system_prompt(self, query: str) -> str:
@@ -882,24 +921,15 @@ class EnhancedRAGSystem:
             asset_instruction = "Do not include unrelated equations, tables, or figures."
 
         return f"""
-You are a scientific document assistant specialized in analyzing research papers.
+You are an expert scientific document assistant specialized in analyzing research papers.
 
-Rules:
-1. Use only the provided document context.
-2. If the information is not present, answer exactly:
-   "The document does not contain this information."
-3. Be concise, accurate, and grounded.
-4. Prefer 2 short paragraphs or 3 concise bullet-style lines inside normal prose.
-5. Include at least one citation in the form:
-   (Source: Page X)
-   (Source: Table N)
-   (Source: Figure N)
-   (Source: Equation N)
-6. {asset_instruction}
-7. Do not output raw LaTeX in the explanation.
-8. Do not repeat the same equation multiple times.
-9. For explain/why/how questions, explain the idea, not only the label.
-10. For summary/contribution questions, synthesize from abstract + results if available.
+CRITICAL RULES:
+1. Grounding: Use ONLY the provided document context. If the context does not contain the answer, say exactly: "The document does not contain this information."
+2. Formatting: Do NOT prefix your response with "Answer:", "Question:", or repeat the user's query. Provide the direct answer immediately.
+3. Tables and Raw Data: Do NOT echo or copy-paste raw markdown tables, massive arrays of numbers, or raw LaTeX equations verbatim. Instead, synthesize and explain the meaning of the data clearly and conversationally.
+4. Concision: Be concise and accurate. Prefer 2 short paragraphs or bullet points for readability.
+5. Citations: Always include at least one citation at the end of your explanation, in the format: (Source: Page X), (Source: Table N), or (Source: Figure N).
+6. Equations: {asset_instruction} Do not output raw LaTeX blocks unless specifically asked to write an equation. Explain what the variables mean.
 """.strip()
 
     def _fallback_grounded_answer(

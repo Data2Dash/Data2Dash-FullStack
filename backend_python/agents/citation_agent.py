@@ -4,13 +4,14 @@ import re
 from typing import List, Dict, Any
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
+from .model_router import get_groq_llm
 
 class CitationAgent:
     def __init__(self, groq_api_key: str):
-        self.llm = ChatGroq(
+        self.llm = get_groq_llm(
+            preferred_model="llama-3.1-8b-instant",
+            temperature=0.0,
             groq_api_key=groq_api_key,
-            model_name="llama-3.1-8b-instant",
-            temperature=0.0
         )
 
     def search_semantic_scholar(self, sentence: str) -> List[Dict[str, Any]]:

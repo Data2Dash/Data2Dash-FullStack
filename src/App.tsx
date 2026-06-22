@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/layout/Sidebar';
+import { TopBar } from './components/layout/TopBar';
+import { ToastContainer } from './components/ui/ToastContainer';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 import { ChatPage } from './pages/ChatPage.tsx';
@@ -44,6 +46,8 @@ function TabContainer() {
         
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col relative h-full overflow-hidden">
+          <TopBar />
+
           {/* Floating Toggle Button (visible when sidebar is closed) */}
           {!isSidebarOpen && (
             <button
@@ -87,6 +91,8 @@ function App() {
         {/* All protected routes are handled by the TabContainer to preserve state */}
         <Route path="*" element={<TabContainer />} />
       </Routes>
+      {/* Toasts render above everything including modals */}
+      <ToastContainer />
     </Router>
   );
 }

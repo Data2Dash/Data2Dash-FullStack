@@ -8,7 +8,9 @@ import { CompareTab } from './CompareTab';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { generatePodcast, pollPodcastStatus, getPodcastAudioUrl, type PodcastStatusResponse } from '../../api/podcastService';
-import { searchYouTubeVideos, type YouTubeVideo } from '../../api/youtubeService';
+import { notify } from '../../store/useUIStore';
+import { generateVideo, pollVideoStatus, getVideoDownloadUrl, VIDEO_VOICES, type VideoVoiceId, type VideoStatusResponse } from '../../api/videoService';
+
 import { clsx } from 'clsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,6 +20,7 @@ import 'katex/dist/katex.min.css';
 import { cleanTableMarkdown } from '../../utils/tableUtils';
 import { normalizeEquations } from '../../utils/mathUtils';
 import { codeComponents } from '../ui/CodeBlock';
+import { AiMessageRenderer } from '../ui/AiMessageRenderer';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -32,6 +35,8 @@ interface Message {
   role: 'user' | 'ai';
   content: string | React.ReactNode;
   citations?: Citation[];
+  equations?: any[];
+  tables?: any[];
 }
 
 interface Figure {
@@ -122,71 +127,164 @@ function PodcastTab({ paperTitle, paperContent }: { paperTitle: string; paperCon
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Video Tab
+// AI Video Presenter Tab
 // ────────────────────────────────────────────────────────────────────────────
 function VideoTab({ paperTitle, paperAbstract }: { paperTitle: string; paperAbstract: string }) {
-  const [videos, setVideos] = useState<YouTubeVideo[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [numSlides, setNumSlides] = useState<4 | 6 | 8 | 10>(6);
+  const [voice, setVoice] = useState<VideoVoiceId>(VIDEO_VOICES[0].id);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [status, setStatus] = useState<VideoStatusResponse | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
 
-  useEffect(() => { handleSearch(); }, []);
-
-  const handleSearch = async () => {
-    setIsLoading(true); setError(null); setHasSearched(true);
+  const handleGenerate = async () => {
+    setIsGenerating(true); setError(null); setStatus(null); setVideoUrl(null); setTaskId(null);
     try {
-      const res = await searchYouTubeVideos(paperTitle, paperAbstract, 6);
-      setVideos(res.videos);
+      const res = await generateVideo({
+        paper_title: paperTitle,
+        paper_content: paperAbstract,
+        num_slides: numSlides,
+        voice,
+      });
+      setTaskId(res.task_id);
+      await pollVideoStatus(res.task_id, setStatus);
+      setVideoUrl(getVideoDownloadUrl(res.task_id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to find videos');
+      setError(err instanceof Error ? err.message : 'Failed to generate video');
     } finally {
-      setIsLoading(false);
+      setIsGenerating(false);
     }
   };
 
-  if (isLoading) return (
-    <div className="flex flex-col items-center justify-center h-full gap-3">
-      <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
-      <p className="text-sm text-stone-500">Finding related videos…</p>
-    </div>
-  );
+  const handleReset = () => {
+    setVideoUrl(null); setStatus(null); setTaskId(null); setError(null);
+  };
 
-  if (error) return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
-      <p className="text-sm text-stone-500">{error}</p>
-      <Button variant="outline" onClick={handleSearch}>Try Again</Button>
-    </div>
-  );
-
-  if (!videos.length && hasSearched) return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
-      <Video className="h-8 w-8 text-stone-300" />
-      <p className="text-sm text-stone-500">No videos found for this paper.</p>
-    </div>
-  );
-
-  return (
-    <div className="p-5 h-full overflow-y-auto custom-scrollbar">
-      <p className="text-xs text-stone-400 mb-4">{videos.length} related videos</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {videos.map((video) => (
-          <a key={video.video_id} href={video.link} target="_blank" rel="noopener noreferrer"
-            className="group block rounded-xl border border-stone-200 overflow-hidden hover:border-stone-300 hover:shadow-soft transition-all">
-            <div className="relative aspect-video bg-stone-100">
-              <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-2">
-                  <ExternalLink className="h-4 w-4 text-stone-700" />
-                </div>
-              </div>
-            </div>
-            <div className="p-3">
-              <h5 className="text-xs font-semibold text-stone-800 line-clamp-2 mb-1">{video.title}</h5>
-              <p className="text-[11px] text-stone-400">{video.channel}</p>
-            </div>
-          </a>
-        ))}
+  // ── Video ready screen ──
+  if (videoUrl && taskId) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex-none px-5 py-3 bg-white border-b border-stone-100 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2">
+            <Video className="h-4 w-4 text-stone-600" />
+            <span className="text-sm font-semibold text-stone-900">AI Video Ready</span>
+          </div>
+          <div className="flex gap-2">
+            <a
+              href={videoUrl}
+              download={`presentation_${taskId}.mp4`}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs font-semibold hover:bg-stone-700 transition-colors"
+            >
+              <Download className="h-3.5 w-3.5" /> Download MP4
+            </a>
+            <button
+              onClick={handleReset}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-stone-200 text-stone-600 rounded-lg text-xs font-semibold hover:bg-stone-50 transition-colors"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> New Video
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center p-6 bg-stone-50">
+          <video
+            src={videoUrl}
+            controls
+            autoPlay
+            className="w-full max-w-2xl rounded-2xl shadow-2xl border border-stone-200 bg-black"
+            style={{ aspectRatio: '16/9' }}
+          />
+          <p className="text-xs text-stone-400 mt-3">1280×720 · 24fps · H.264</p>
+        </div>
       </div>
+    );
+  }
+
+  // ── Config / Generating screen ──
+  return (
+    <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+      {!isGenerating ? (
+        <>
+          <div className="p-4 rounded-2xl bg-stone-100 mb-5">
+            <Video className="h-7 w-7 text-stone-700" />
+          </div>
+          <h4 className="text-lg font-semibold text-stone-900 mb-1">AI Video Presenter</h4>
+          <p className="text-sm text-stone-500 max-w-xs mb-7">
+            Generate a cinematic presentation video with AI illustrations and narration.
+          </p>
+
+          {/* Slide count */}
+          <div className="w-full max-w-xs mb-5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2 text-left">Slides</p>
+            <div className="flex gap-2">
+              {([4, 6, 8, 10] as const).map(n => (
+                <button
+                  key={n}
+                  onClick={() => setNumSlides(n)}
+                  className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+                    numSlides === n ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'
+                  }`}
+                >
+                  {n}
+                  <span className="block text-[10px] opacity-60">~{n * 45}s</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Voice selector */}
+          <div className="w-full max-w-xs mb-7">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2 text-left">Narrator Voice</p>
+            <select
+              value={voice}
+              onChange={e => setVoice(e.target.value as VideoVoiceId)}
+              className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-white text-sm text-stone-700 font-medium focus:outline-none focus:border-stone-400 transition-colors"
+            >
+              {VIDEO_VOICES.map(v => (
+                <option key={v.id} value={v.id}>{v.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm max-w-xs">{error}</div>
+          )}
+
+          <button
+            onClick={handleGenerate}
+            className="flex items-center gap-2 px-6 py-3 bg-stone-900 text-white rounded-xl font-semibold text-sm hover:bg-stone-700 transition-all shadow-md active:scale-95"
+          >
+            <Video className="h-4 w-4" /> Generate Video
+          </button>
+        </>
+      ) : (
+        // Generating progress view
+        <>
+          <div className="relative mb-6">
+            <div className="h-16 w-16 rounded-full border-4 border-stone-100 border-t-stone-900 animate-spin" />
+            <Video className="h-6 w-6 text-stone-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+          </div>
+          <h4 className="font-semibold text-stone-800 mb-1">Generating your video…</h4>
+          <p className="text-sm text-stone-500 mb-6 max-w-xs">
+            AI is designing slides, generating illustrations, and recording narration.
+          </p>
+          {status && (
+            <div className="w-full max-w-xs">
+              <div className="flex justify-between text-xs text-stone-500 mb-1.5">
+                <span className="truncate pr-2">{status.message}</span>
+                <span className="font-semibold text-stone-700 shrink-0">{status.progress}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden">
+                <div
+                  className="h-full bg-stone-900 transition-all duration-700 rounded-full"
+                  style={{ width: `${status.progress}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-stone-400 mt-3">This takes 3–8 minutes depending on slide count.</p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -194,30 +292,40 @@ function VideoTab({ paperTitle, paperAbstract }: { paperTitle: string; paperAbst
 // ────────────────────────────────────────────────────────────────────────────
 // Diagrams / Figures Tab
 // ────────────────────────────────────────────────────────────────────────────
-function DiagramTab({ sessionId, fileName }: { sessionId: string; fileName: string | null }) {
+function DiagramTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileName: string | null; pdfUrl: string | null }) {
   const [figures, setFigures] = useState<Figure[]>([]);
   const [selectedFigure, setSelectedFigure] = useState<Figure | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // start true — show spinner immediately
+  const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [figureMessages, setFigureMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([]);
   const [figureInput, setFigureInput] = useState('');
 
   useEffect(() => {
-    if (fileName && fileName !== 'paper.pdf') {
+    if (fileName) {
       fetchFigures();
+    } else {
+      setIsLoading(false);
     }
   }, [sessionId, fileName]);
 
   const fetchFigures = async () => {
     if (!fileName) return;
     setIsLoading(true);
+    setError(null);
     try {
-      const response = await fetch(`${API_URL}/api/pdf/figures?session_id=${sessionId}&filename=${fileName}`);
+      const url = `${API_URL}/api/pdf/figures?session_id=${sessionId}&filename=${encodeURIComponent(fileName)}${pdfUrl ? `&pdf_url=${encodeURIComponent(pdfUrl)}` : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || `Server error ${response.status}`);
+      }
       const data = await response.json();
       setFigures(data.figures || []);
-    } catch (error) {
-      console.error('Error fetching figures:', error);
+    } catch (e: any) {
+      console.error('Error fetching figures:', e);
+      setError(e.message || 'Failed to extract figures.');
     } finally {
       setIsLoading(false);
     }
@@ -261,12 +369,25 @@ function DiagramTab({ sessionId, fileName }: { sessionId: string; fileName: stri
     }
   };
 
-  if (isLoading || fileName === null || (fileName === 'paper.pdf' && !figures.length)) return (
+  if (isLoading || fileName === null) return (
     <div className="flex flex-col items-center justify-center h-full gap-3">
       <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
       <p className="text-sm text-stone-500">
-        {fileName === null ? "Importing paper..." : (fileName === 'paper.pdf' ? "Preparing document..." : "Extracting figures from PDF…")}
+        {fileName === null ? "Waiting for document…" : "Extracting figures from PDF…"}
       </p>
+    </div>
+  );
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+      <ImageIcon className="h-8 w-8 text-stone-300 mb-1" />
+      <p className="text-sm text-red-500 max-w-xs">{error}</p>
+      <button
+        onClick={fetchFigures}
+        className="px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-700 transition-all"
+      >
+        Retry
+      </button>
     </div>
   );
 
@@ -275,9 +396,18 @@ function DiagramTab({ sessionId, fileName }: { sessionId: string; fileName: stri
       {!selectedFigure ? (
         <div className="p-5 overflow-y-auto custom-scrollbar flex-1">
           {figures.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <ImageIcon className="h-8 w-8 text-stone-200 mb-2" />
-              <p className="text-sm text-stone-500">No figures found in this paper.</p>
+            <div className="flex flex-col items-center justify-center h-full text-center p-8 gap-3">
+              <ImageIcon className="h-10 w-10 text-stone-200" />
+              <div>
+                <p className="text-sm font-medium text-stone-500">No figures found in this paper.</p>
+                <p className="text-xs text-stone-400 mt-1">The PDF may not contain embedded images, or they may be too small.</p>
+              </div>
+              <button
+                onClick={fetchFigures}
+                className="mt-2 px-4 py-2 rounded-xl border border-stone-200 text-stone-600 text-xs font-semibold hover:bg-stone-100 transition-all"
+              >
+                Try Again
+              </button>
             </div>
           ) : (
             <>
@@ -377,11 +507,16 @@ function SummarizeTab({ sessionId, fileName, pdfUrl }: { sessionId: string; file
       const result = await response.json();
       if (response.ok) {
         setData(result);
+        notify('Summary Ready', `"${result.title || fileName}" has been summarised successfully.`, 'success');
       } else {
-        setError(result.detail || "Failed to generate summary");
+        const msg = result.detail || 'Failed to generate summary';
+        setError(msg);
+        notify('Summary Failed', msg, 'error');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error connecting to server");
+      const msg = err instanceof Error ? err.message : 'Error connecting to server';
+      setError(msg);
+      notify('Summary Failed', msg, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -482,11 +617,16 @@ function KnowledgeGraphTab({ sessionId, fileName, pdfUrl }: { sessionId: string;
       const result = await response.json();
       if (response.ok) {
         setUrl(result.url);
+        notify('Knowledge Graph Ready', 'Your interactive graph has been built. Click any node to explore connections.', 'success');
       } else {
-        setError(result.detail || "Failed to generate Knowledge Graph");
+        const msg = result.detail || 'Failed to generate Knowledge Graph';
+        setError(msg);
+        notify('Knowledge Graph Failed', msg, 'error');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error connecting to server");
+      const msg = err instanceof Error ? err.message : 'Error connecting to server';
+      setError(msg);
+      notify('Knowledge Graph Failed', msg, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -949,7 +1089,7 @@ interface PaperInteractionPanelProps {
   pdfUrl?: string | null;    // URL for the PDF viewer
   pdfSize?: string | null;   // Size of the PDF file
   onClose?: () => void;
-  onSendMessage?: (message: string) => Promise<{ response: string; sources?: Citation[] }>;
+  onSendMessage?: (message: string) => Promise<{ response: string; sources?: Citation[]; equations?: any[]; tables?: any[] }>;
   isImporting?: boolean;
   /** Pre-loaded chat history (e.g. restored from localStorage / DB) */
   chatHistory?: { role: 'user' | 'ai'; content: string }[];
@@ -1006,7 +1146,13 @@ export function PaperInteractionPanel({
     setIsLoading(true);
     try {
       const result = await onSendMessage(userMsg);
-      setMessages((prev) => [...prev, { role: 'ai', content: result.response, citations: result.sources }]);
+      setMessages((prev) => [...prev, {
+        role: 'ai',
+        content: result.response,
+        citations: result.sources,
+        equations: result.equations,
+        tables: result.tables,
+      }]);
     } catch {
       setMessages((prev) => [...prev, { role: 'ai', content: 'Sorry, I encountered an error.' }]);
     } finally { setIsLoading(false); }
@@ -1030,7 +1176,7 @@ export function PaperInteractionPanel({
               { id: 'view', Icon: Eye, label: 'View' },
               { id: 'diagram', Icon: ImageIcon, label: 'Figures' },
               { id: 'podcast', Icon: Headphones, label: 'Audio' },
-              { id: 'video', Icon: Video, label: 'Videos' },
+              { id: 'video', Icon: Video, label: 'Video AI' },
               { id: 'graph', Icon: Share2, label: 'Knowledge Graph' },
               { id: 'report', Icon: FileText, label: 'Summarize' },
             ];
@@ -1068,17 +1214,14 @@ export function PaperInteractionPanel({
                 {messages.map((msg, idx) => (
                   <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                     <div className={clsx("h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-[11px] font-semibold", msg.role === 'ai' ? 'bg-stone-900 text-white' : 'bg-stone-200 text-stone-700')}>{msg.role === 'ai' ? 'AI' : 'You'}</div>
-                    <div className={clsx("rounded-2xl px-4 py-3 text-sm max-w-[80%] leading-relaxed", msg.role === 'ai' ? 'bg-stone-50 border border-stone-100 text-stone-800' : 'bg-stone-900 text-white')}>
+                    <div className={clsx("rounded-2xl px-4 py-3 text-sm max-w-[85%] leading-relaxed", msg.role === 'ai' ? 'bg-stone-50 border border-stone-100 text-stone-800' : 'bg-stone-900 text-white')}>
                       {msg.role === 'ai' && typeof msg.content === 'string' ? (
-                        <div className="prose prose-sm prose-stone max-w-none">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                            components={codeComponents}
-                          >
-                            {cleanTableMarkdown(normalizeEquations(msg.content))}
-                          </ReactMarkdown>
-                        </div>
+                          <AiMessageRenderer
+                            content={msg.content}
+                            equations={msg.equations}
+                            tables={msg.tables}
+                            compact
+                          />
                       ) : (
                         msg.content
                       )}
@@ -1150,7 +1293,7 @@ export function PaperInteractionPanel({
         )}
 
         {activeTab === 'quiz' && <QuizTab sessionId={sessionId} fileName={fileName} />}
-        {activeTab === 'diagram' && <DiagramTab sessionId={sessionId} fileName={fileName} />}
+        {activeTab === 'diagram' && <DiagramTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}
         {activeTab === 'podcast' && <PodcastTab paperTitle={title} paperContent={subtitle} />}
         {activeTab === 'video' && <VideoTab paperTitle={title} paperAbstract={subtitle} />}
         {activeTab === 'graph' && <KnowledgeGraphTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}

@@ -12,6 +12,7 @@ import { useSearchStore } from '../../store/useSearchStore';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/useChatStore';
 import { workspaceApi } from '../../api/workspaceApi';
+import { notify } from '../../store/useUIStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -721,6 +722,7 @@ interface PaperDetailModalProps {
   pdfUrl: string | null;
   pdfSize: string | null;
   isImporting: boolean;
+  importError: string | null;
   onClose: () => void;
   onSendMessage: (message: string) => Promise<{ response: string; sources?: any[] }>;
   availableFilesToCompare?: { id: string; name: string; sessionId: string; url?: string }[];
@@ -732,6 +734,7 @@ function PaperDetailModal({
   pdfUrl,
   pdfSize,
   isImporting,
+  importError,
   onClose,
   onSendMessage,
   availableFilesToCompare,
@@ -820,6 +823,11 @@ function PaperDetailModal({
                 <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                 Downloading & indexing PDF…
               </div>
+            ) : importError ? (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold">
+                <span className="shrink-0 mt-0.5">⚠️</span>
+                <span className="font-normal leading-snug">{importError}</span>
+              </div>
             ) : pdfFileName ? (
               <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-xs font-semibold">
                 ✅ Full PDF indexed · tables, equations & figures available
@@ -902,6 +910,21 @@ function PaperDetailModal({
                   <Loader2 className="h-5 w-5 animate-spin text-amber-600 shrink-0" />
                   <span className="text-amber-800 font-semibold text-sm">Downloading and indexing PDF — extraction will be ready shortly…</span>
                 </div>
+              ) : importError ? (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 bg-red-50 p-4 rounded-xl border border-red-200">
+                    <span className="text-xl shrink-0">⚠️</span>
+                    <div>
+                      <p className="text-red-800 font-bold text-sm mb-1">PDF indexing failed</p>
+                      <p className="text-red-700 text-xs leading-relaxed">{importError}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-stone-500">
+                    I can still answer general questions about{" "}
+                    <strong className="text-stone-700">{paper.title}</strong>{" "}
+                    based on the abstract and metadata.
+                  </p>
+                </div>
               ) : pdfFileName ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200 text-xs font-semibold">
@@ -950,6 +973,7 @@ export function PaperSearch() {
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfSize, setPdfSize] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [resultsTab, setResultsTab] = useState<'papers' | 'insights'>('papers');
 
   // Stable UUID-based session ID for PDF import/chat — generated once per component mount
@@ -1035,12 +1059,14 @@ export function PaperSearch() {
       setPdfFileName(null);
       setPdfUrl(null);
       setPdfSize(null);
+      setImportError(null);
       return;
     }
     setSelectedPaper(paper);
     setPdfFileName(null);
     setPdfUrl(null);
     setPdfSize(null);
+    setImportError(null);
     setIsImporting(true);
     try {
       const paperId = paper.arxiv_id || paper.id;
@@ -1052,13 +1078,25 @@ export function PaperSearch() {
         body: JSON.stringify({ paper_id: paperId, session_id: paperSessionId.current, title: paper.title, pdf_url: paper.pdf_url || undefined }),
       });
       const data = await res.json();
-      if (data.filename) setPdfFileName(data.filename);
-      if (data.pdf_url) setPdfUrl(data.pdf_url);
-      if (data.pdf_size) setPdfSize(data.pdf_size);
-      // Refresh workspace sidebar so the imported paper appears under Recent Files
-      triggerRefresh();
+      if (!res.ok) {
+        const reason = data?.detail || data?.message || `Server returned ${res.status}`;
+        setImportError(`Could not index this paper: ${reason}`);
+        notify('PDF Import Failed', `Could not index "${paper.title}": ${reason}`, 'error');
+      } else if (data.filename) {
+        setPdfFileName(data.filename);
+        if (data.pdf_url)  setPdfUrl(data.pdf_url);
+        if (data.pdf_size) setPdfSize(data.pdf_size);
+        notify('PDF Indexed', `"${paper.title}" is ready — you can now chat, summarise, and explore the knowledge graph.`, 'success');
+        triggerRefresh();
+      } else {
+        setImportError('PDF was downloaded but could not be indexed. The file may be corrupted or protected.');
+        notify('PDF Import Failed', `"${paper.title}" was downloaded but could not be indexed.`, 'error');
+      }
     } catch (err) {
       console.error('Import error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setImportError(`Network error — could not reach the server. ${msg}`);
+      notify('PDF Import Failed', `Network error while importing "${paper.title}": ${msg}`, 'error');
     } finally {
       setIsImporting(false);
     }
@@ -1366,6 +1404,7 @@ export function PaperSearch() {
             pdfUrl={pdfUrl}
             pdfSize={pdfSize}
             isImporting={isImporting}
+            importError={importError}
             onClose={() => setSelectedPaper(null)}
             availableFilesToCompare={rankedFull.map(p => ({
               id: p.arxiv_id || p.id,
@@ -1376,12 +1415,12 @@ export function PaperSearch() {
             onSendMessage={async (message) => {
               const sid = paperSessionId.current;
               if (pdfFileName) {
-                // PDF is fully indexed — answer ONLY from document content
+                // PDF is fully indexed — route through chat agent for grounded, well-formatted answers
                 const resp = await fetch(`${API_URL}/api/pdf/chat`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
                   },
                   body: JSON.stringify({ query: message, session_id: sid }),
                 });
@@ -1389,24 +1428,18 @@ export function PaperSearch() {
                 if (!resp.ok) {
                   return { response: data.detail || 'PDF chat failed.' };
                 }
-                const parts: string[] = [];
-                if (data.answer) parts.push(data.answer);
-                for (const eq of (data.equations || [])) {
-                  const label = eq.label ?? `Equation ${eq.global_number ?? '?'}`;
-                  const latex = eq.normalized_latex || eq.latex || eq.raw_text || '';
-                  if (latex) parts.push(`**📐 ${label}**\n$$\n${latex}\n$$`);
-                }
-                for (const tb of (data.tables || [])) {
-                  const label = tb.label ?? `Table ${tb.global_number ?? '?'}`;
-                  const caption = tb.caption ? ` — ${tb.caption}` : '';
-                  const content = tb.markdown || tb.raw_text || '';
-                  if (content) parts.push(`**📊 ${label}${caption}**\n\n${content}`);
-                }
+
+                // Return structured data — AiMessageRenderer will render equations/tables
+                // as premium blocks with page-number badges; answer text stays clean.
                 return {
-                  response: parts.join('\n\n') ||
+                  response:  data.answer || data.response ||
                     'No relevant content found in the document for this query. Try rephrasing your question.',
+                  equations: (data.equations || []).length > 0 ? data.equations : undefined,
+                  tables:    (data.tables    || []).length > 0 ? data.tables    : undefined,
+                  sources:   data.sources,
                 };
               }
+
               // PDF not yet indexed — refuse to answer from memory/general knowledge
               if (isImporting) {
                 return {

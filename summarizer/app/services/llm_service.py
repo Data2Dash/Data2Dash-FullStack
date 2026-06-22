@@ -69,8 +69,13 @@ def chat_completion(
             ) from exc
 
         except RateLimitError as exc:
-            # Auto-fallback: try a smaller/different model before giving up
-            FALLBACK_MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "mixtral-8x7b-32768"]
+            # Fallback chain — current valid Groq models (May 2026)
+            FALLBACK_MODELS = [
+                "llama-3.1-8b-instant",                      # Production — fast
+                "llama-3.3-70b-versatile",                   # Production — quality
+                "meta-llama/llama-4-scout-17b-16e-instruct", # Preview
+                "qwen/qwen3-32b",                            # Preview — separate quota
+            ]
             current_model = settings.groq_model
             for fallback in FALLBACK_MODELS:
                 if fallback == current_model:

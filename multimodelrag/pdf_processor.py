@@ -280,7 +280,7 @@ class TableDetector:
             prompt = "Extract the following table from a research paper into a perfect Markdown table. If there are any mathematical equations or formulas, use standard LaTeX ($...$ or $$...$$). Do not output any conversational text, ONLY the markdown table."
             
             completion = client.chat.completions.create(
-                model="llama-3.2-11b-vision-preview",
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=[
                     {
                         "role": "user",

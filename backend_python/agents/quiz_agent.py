@@ -46,7 +46,7 @@ class QuizAgent:
         loader = PyPDFLoader(pdf_path)
         docs = loader.load()
 
-        splitter = RecursiveCharacterTextSplitter(chunk_size=5000, chunk_overlap=200)
+        splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
         splits = splitter.split_documents(docs)
 
         vectorstore = Chroma.from_documents(documents=splits, embedding=_get_embeddings())
@@ -103,13 +103,15 @@ class QuizAgent:
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
         vectorstore = self._get_vectorstore(pdf_path)
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
         # Retrieve the most relevant chunks for quiz generation
         docs = retriever.invoke(
             f"Generate a {difficulty} {num_questions}-question multiple-choice quiz covering the key concepts, findings, and important details of this document."
         )
         context = "\n\n---\n\n".join(d.page_content for d in docs)
+        # Ensure context string fits within Groq TPM limit (~15,000 characters)
+        context = context[:12000]
 
         system_prompt = self._build_system_prompt(num_questions, difficulty)
         prompt = ChatPromptTemplate.from_messages([
