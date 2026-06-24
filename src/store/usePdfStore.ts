@@ -8,7 +8,11 @@ export interface PdfFile {
   id: string;
   name: string;
   size: string;
-  status: 'uploading' | 'ready' | 'error';
+  status: 'uploading' | 'indexing' | 'ready' | 'error';
+  /** Byte-upload progress (0–100) while status === 'uploading'. */
+  progress?: number;
+  /** Human-readable failure reason when status === 'error'. */
+  error?: string;
   url?: string;
   sessionId: string;
 }

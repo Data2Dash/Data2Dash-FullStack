@@ -15,6 +15,34 @@ export interface CitationPaper {
   citationCount?: number;
 }
 
+/**
+ * The refactored citation pipeline returns each style as a structured object
+ * ({ citation, reference, warnings, source_type }) rather than a plain string.
+ * A style value may therefore be a legacy string OR this structured entry.
+ */
+export interface CitationStyleEntry {
+  citation?: string;
+  reference?: string;
+  warnings?: string[];
+  source_type?: string;
+}
+
+export type CitationStyleValue = string | CitationStyleEntry | null | undefined;
+
+/** Raw shape as it may arrive from the backend (strings or structured entries). */
+export interface RawCitationFormatResponse {
+  apa: CitationStyleValue;
+  mla: CitationStyleValue;
+  chicago: CitationStyleValue;
+  ieee: CitationStyleValue;
+  harvard: CitationStyleValue;
+  bibtex: CitationStyleValue;
+  source?: CitationStyleValue;
+  warnings?: string[];
+  source_type?: string;
+}
+
+/** Normalized shape the rest of the app consumes — every style is a plain string. */
 export interface CitationFormatResponse {
   apa: string;
   mla: string;
@@ -26,6 +54,25 @@ export interface CitationFormatResponse {
 }
 
 export type CitationStyle = 'apa' | 'mla' | 'chicago' | 'ieee' | 'harvard' | 'bibtex';
+
+/**
+ * Coerce any citation style value into a displayable string. Handles plain
+ * strings, the new { citation, reference } objects, and malformed/empty input
+ * so a structured object can never reach React as a child.
+ */
+export function citationToText(value: CitationStyleValue): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    // Prefer the full formatted reference for a bibliography; fall back sensibly.
+    const candidate = value.reference ?? value.citation;
+    if (typeof candidate === 'string') return candidate;
+    // Last-resort: first string field on the object.
+    const firstString = Object.values(value).find(v => typeof v === 'string');
+    return typeof firstString === 'string' ? firstString : '';
+  }
+  return String(value);
+}
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_BASE_URL = `${API_URL}/api/citation`;
@@ -60,7 +107,18 @@ export async function formatCitation(paper: CitationPaper): Promise<CitationForm
     }),
   });
   if (!response.ok) throw new Error('Failed to format citation');
-  return await response.json();
+  const raw: RawCitationFormatResponse = await response.json();
+  // Normalize the new structured contract down to flat strings so component
+  // state, persistence, rendering, and export all stay string-based.
+  return {
+    apa: citationToText(raw.apa),
+    mla: citationToText(raw.mla),
+    chicago: citationToText(raw.chicago),
+    ieee: citationToText(raw.ieee),
+    harvard: citationToText(raw.harvard),
+    bibtex: citationToText(raw.bibtex),
+    source: citationToText(raw.source),
+  };
 }
 
 // ─── Import by DOI / URL / Title ─────────────────────────────────────────────

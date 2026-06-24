@@ -1,7 +1,7 @@
 import React from 'react';
 import { Download, Copy, Check, FileText, ChevronDown } from 'lucide-react';
 import { Citation } from '../CitationWorkspace';
-import { CitationStyle } from '../../../api/citationApi';
+import { CitationStyle, citationToText } from '../../../api/citationApi';
 
 interface ExportMenuProps {
   citations: Citation[];
@@ -22,11 +22,15 @@ export function ExportMenu({ citations, activeStyle, articleTitle }: ExportMenuP
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Coerce defensively: a style value may be a structured { citation, reference }
+  // object from the refactored pipeline, not a string.
+  const styleText = (c: Citation, style: CitationStyle) => citationToText(c[style]);
+
   const buildRefList = () =>
-    citations.map((c, i) => `${i + 1}. ${c[activeStyle] || c.apa}`).join('\n\n');
+    citations.map((c, i) => `${i + 1}. ${styleText(c, activeStyle) || styleText(c, 'apa')}`).join('\n\n');
 
   const buildBibtex = () =>
-    citations.map((c) => c.bibtex || c.apa).join('\n\n');
+    citations.map((c) => styleText(c, 'bibtex') || styleText(c, 'apa')).join('\n\n');
 
   const handleCopy = () => {
     navigator.clipboard.writeText(buildRefList());

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   MessageSquare, Image as ImageIcon, Share2, Headphones, FileText, Quote,
   X, Send, Download, Loader2, Video, ExternalLink, ChevronLeft, Sparkles, Eye,
@@ -485,42 +485,80 @@ function DiagramTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileNa
 // ────────────────────────────────────────────────────────────────────────────
 // Summarize Tab
 // ────────────────────────────────────────────────────────────────────────────
+// Summaries involve a full-document LLM pass — allow a generous ceiling before
+// surfacing a clear timeout (mirrors the Upload tab's uploadApi timeout pattern).
+const SUMMARY_TIMEOUT_MS = 180_000;
+
 function SummarizeTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileName: string | null; pdfUrl: string | null }) {
   const [data, setData] = useState<{title: string; summary: string; report_url: string | null} | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (fileName && fileName !== 'paper.pdf') {
-      fetchSummary();
-    }
-  }, [sessionId, fileName]);
+  // Cancellation + stale-response guard so we only ever show the CURRENT file's
+  // summary, even when the user switches/re-uploads files rapidly.
+  const abortRef = useRef<AbortController | null>(null);
+  const reqIdRef = useRef(0);
 
-  const fetchSummary = async () => {
+  const fetchSummary = useCallback(async () => {
+    if (!fileName) return;
+    // Cancel any in-flight summary and start a fresh, identifiable request.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const myReqId = ++reqIdRef.current;
+    const timeout = setTimeout(() => controller.abort(), SUMMARY_TIMEOUT_MS);
+
+    // Reset state up front so a prior error/summary can't linger on retry.
     setIsLoading(true);
+    setError(null);
+    setData(null);
+
     try {
       const response = await fetch(`${API_URL}/api/pdf/summarize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, filename: fileName, pdf_url: pdfUrl }),
+        signal: controller.signal,
       });
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
+      // Ignore responses from a superseded request (stale-data guard).
+      if (myReqId !== reqIdRef.current) return;
+
       if (response.ok) {
-        setData(result);
+        const summary = (result?.summary || '').trim();
+        if (!summary) {
+          // Bad/empty model output — surface clearly instead of a blank panel.
+          const msg = 'The summary came back empty. Please try again.';
+          setError(msg);
+          notify('Summary Failed', msg, 'error');
+          return;
+        }
+        setData({ title: result.title || fileName, summary, report_url: result.report_url ?? null });
         notify('Summary Ready', `"${result.title || fileName}" has been summarised successfully.`, 'success');
       } else {
-        const msg = result.detail || 'Failed to generate summary';
+        const msg = result?.detail || 'Failed to generate summary';
         setError(msg);
         notify('Summary Failed', msg, 'error');
       }
     } catch (err) {
+      // Swallow cancellations (newer request or unmount); surface real failures.
+      if ((err as DOMException)?.name === 'AbortError') return;
       const msg = err instanceof Error ? err.message : 'Error connecting to server';
       setError(msg);
       notify('Summary Failed', msg, 'error');
     } finally {
-      setIsLoading(false);
+      clearTimeout(timeout);
+      if (myReqId === reqIdRef.current) setIsLoading(false);
     }
-  };
+  }, [sessionId, fileName, pdfUrl]);
+
+  useEffect(() => {
+    if (fileName && fileName !== 'paper.pdf') {
+      fetchSummary();
+    }
+    // Abort the in-flight summary when the file changes or the tab unmounts.
+    return () => abortRef.current?.abort();
+  }, [fetchSummary, fileName]);
 
   if (isLoading || fileName === null) return (
     <div className="flex flex-col items-center justify-center h-full gap-3">

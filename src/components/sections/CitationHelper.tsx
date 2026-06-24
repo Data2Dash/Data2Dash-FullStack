@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/Button';
-import { searchCitations, formatCitation, CitationPaper, CitationFormatResponse } from '../../api/citationApi';
+import { searchCitations, formatCitation, citationToText, CitationPaper, CitationFormatResponse } from '../../api/citationApi';
 
 const INITIAL_CONTENT = `In recent years, the integration of advanced natural language processing has profoundly
 transformed information retrieval. The attention mechanism provides a powerful framework
@@ -278,7 +278,7 @@ export function CitationHelper() {
                 <div className="space-y-6">
                   {citations.map((cite) => (
                     <div key={cite.id} className="text-sm text-stone-600 leading-relaxed font-serif pl-6 -indent-6">
-                      {cite[activeStyle]}
+                      {citationToText(cite[activeStyle])}
                       {cite.source && (
                         <a href={cite.source} target="_blank" rel="noreferrer" className="block text-sage-600/70 hover:text-sage-700 underline mt-1 break-all">
                           {cite.source}

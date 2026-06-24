@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Upload, FileText, Loader2, Plus,
-  Download, ExternalLink, X, Sparkles, CheckCircle2,
+  Download, ExternalLink, X, Sparkles, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { PaperInteractionPanel } from './PaperInteractionPanel';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,10 +9,20 @@ import { clsx } from 'clsx';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/useChatStore';
 import { usePdfStore, PdfFile } from '../../store/usePdfStore';
+import { uploadApi, validateFile, ACCEPT_ATTR, MAX_FILE_SIZE_MB } from '../../api/uploadApi';
+import { notify } from '../../store/useUIStore';
+import axios from 'axios';
+
+/** True when an error is a user-initiated cancellation rather than a real failure. */
+function axiosAborted(err: unknown): boolean {
+  return axios.isCancel(err) || (err as DOMException)?.name === 'AbortError';
+}
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const SPLIT_KEY = 'data2dash-pdf-split';
 const DEFAULT_CHAT_PCT = 42;
+const UPLOAD_CONCURRENCY = 3;       // sane parallelism cap for multi-file uploads
+const PROGRESS_THROTTLE_MS = 150;   // throttle progress-driven re-renders
 
 // ─── Drag-to-resize hook ──────────────────────────────────────────────────────
 function useResizableSplit(defaultPct: number, storageKey: string) {
@@ -65,12 +75,14 @@ function FileTabBar({
   activeId,
   onSelect,
   onRemove,
+  onCancel,
   onUpload,
 }: {
   files: PdfFile[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
+  onCancel: (id: string) => void;
   onUpload: (fl: FileList) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -96,23 +108,29 @@ function FileTabBar({
         type="file"
         className="hidden"
         multiple
-        accept=".pdf,.docx,.txt"
+        accept={ACCEPT_ATTR}
         onChange={e => e.target.files?.length && onUpload(e.target.files)}
       />
 
       {/* File tabs */}
       <div className="flex items-stretch overflow-x-auto flex-1" style={{ scrollbarWidth: 'none' }}>
         <AnimatePresence initial={false}>
-          {files.map(file => (
+          {files.map(file => {
+            const isUploading = file.status === 'uploading';
+            const isIndexing = file.status === 'indexing';
+            // PDF is viewable as soon as bytes land (ready or still indexing).
+            const isViewable = file.status === 'ready' || (isIndexing && !!file.url);
+            return (
             <motion.button
               key={file.id}
               initial={{ opacity: 0, width: 0 }}
               animate={{ opacity: 1, width: 'auto' }}
               exit={{ opacity: 0, width: 0 }}
               transition={{ duration: 0.15 }}
-              onClick={() => file.status === 'ready' && onSelect(file.id)}
+              onClick={() => isViewable && onSelect(file.id)}
+              title={file.status === 'error' ? file.error : file.name}
               className={clsx(
-                'group relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-r border-stone-200 transition-all shrink-0 min-w-0 max-w-[200px]',
+                'group relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-r border-stone-200 transition-all shrink-0 min-w-0 max-w-[200px] overflow-hidden',
                 activeId === file.id
                   ? 'bg-white text-stone-900 border-b-2 border-b-stone-900 -mb-px z-10'
                   : file.status === 'error'
@@ -120,10 +138,12 @@ function FileTabBar({
                   : 'text-stone-500 hover:bg-stone-50 hover:text-stone-800',
               )}
             >
-              {file.status === 'uploading' ? (
+              {isUploading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-stone-400" />
+              ) : isIndexing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-amber-500" />
               ) : file.status === 'error' ? (
-                <X className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
               ) : (
                 <FileText className="h-3.5 w-3.5 shrink-0" />
               )}
@@ -132,20 +152,39 @@ function FileTabBar({
                 {file.name}
               </span>
 
+              {isUploading && (
+                <span className="text-[10px] font-bold text-stone-400 shrink-0 tabular-nums">
+                  {file.progress ?? 0}%
+                </span>
+              )}
+
               {file.status === 'ready' && activeId !== file.id && (
                 <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-500 opacity-70" />
               )}
 
-              {/* Remove button */}
+              {/* Cancel (in-flight) or Remove (settled) */}
               <span
                 role="button"
-                onClick={e => { e.stopPropagation(); onRemove(file.id); }}
+                onClick={e => {
+                  e.stopPropagation();
+                  (isUploading || isIndexing) ? onCancel(file.id) : onRemove(file.id);
+                }}
+                title={isUploading || isIndexing ? 'Cancel upload' : 'Remove'}
                 className="ml-0.5 p-0.5 rounded hover:bg-stone-200 text-stone-400 hover:text-stone-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
               >
                 <X className="h-3 w-3" />
               </span>
+
+              {/* Byte-progress bar pinned to the tab's bottom edge */}
+              {isUploading && (
+                <span
+                  className="absolute bottom-0 left-0 h-0.5 bg-stone-800 transition-all duration-150"
+                  style={{ width: `${file.progress ?? 0}%` }}
+                />
+              )}
             </motion.button>
-          ))}
+            );
+          })}
         </AnimatePresence>
       </div>
 
@@ -224,6 +263,30 @@ export function PdfAnalysis() {
 
   const currentFile = files.find(f => f.id === activeFileId) ?? null;
 
+  // ── In-flight request bookkeeping (mirrors the cancellation pattern an
+  //    AbortController-based data layer needs; Search has none so this diverges).
+  //    Kept in refs — transient, never persisted. ──────────────────────────────
+  const abortControllers = useRef<Map<string, AbortController>>(new Map());
+  const lastProgressEmit = useRef<Map<string, number>>(new Map());
+
+  // Abort every in-flight upload/poll on unmount so no resources or listeners leak.
+  useEffect(() => {
+    return () => {
+      abortControllers.current.forEach(ac => ac.abort());
+      abortControllers.current.clear();
+      lastProgressEmit.current.clear();
+    };
+  }, []);
+
+  // Throttle progress-driven store writes so rapid byte events don't thrash renders.
+  const emitProgress = useCallback((id: string, pct: number) => {
+    const now = Date.now();
+    const last = lastProgressEmit.current.get(id) ?? 0;
+    if (pct < 100 && now - last < PROGRESS_THROTTLE_MS) return;
+    lastProgressEmit.current.set(id, now);
+    updateFile(id, { progress: pct });
+  }, [updateFile]);
+
   // ── Auto-reindex persisted files on mount / page refresh ──────────────────
   useEffect(() => {
     if (files.length === 0) return;
@@ -250,82 +313,106 @@ export function PdfAnalysis() {
     doReindex();
   }, [files, reindexedSessions, markReindexed]);
 
-  const processFiles = useCallback(async (fileList: FileList | File[]) => {
-    const arr = Array.from(fileList);
-    const newEntries: PdfFile[] = arr.map(f => ({
-      id: `${f.name}_${Date.now()}`,
-      name: f.name,
-      size: (f.size / (1024 * 1024)).toFixed(1) + ' MB',
-      status: 'uploading' as const,
-      sessionId: crypto.randomUUID()
-    }));
+  // Upload + index one file end-to-end. Each phase is cancellable via its
+  // AbortController; transient failures retry with backoff inside uploadApi.
+  const uploadOne = useCallback(async (file: File, entry: PdfFile) => {
+    const ac = new AbortController();
+    abortControllers.current.set(entry.id, ac);
+    try {
+      const data = await uploadApi.uploadFile({
+        file,
+        sessionId: entry.sessionId,
+        token,
+        signal: ac.signal,
+        onProgress: pct => emitProgress(entry.id, pct),
+      });
 
-    // Add to store immediately
-    for (const entry of newEntries) {
-      addFile(entry);
-    }
+      updateFile(entry.id, { url: data.url, progress: 100 });
+      // Optimistic: reveal the PDF viewer the moment bytes have landed.
+      if (!usePdfStore.getState().activeFileId) setActiveFileId(entry.id);
+      triggerRefresh();
 
-    for (let i = 0; i < arr.length; i++) {
-      const file = arr[i];
-      const entry = newEntries[i];
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('session_id', entry.sessionId);
-
-      try {
-        // Include auth token so the backend saves the file to the user's workspace
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch(`${API_URL}/api/pdf/upload`, {
-          method: 'POST',
-          headers,
-          body: formData,
+      if (data.indexing) {
+        // Background-index phase — non-blocking; viewer already usable.
+        updateFile(entry.id, { status: 'indexing' });
+        const result = await uploadApi.pollIndexingStatus({
+          sessionId: entry.sessionId,
+          fileName: file.name,
+          signal: ac.signal,
         });
-        const data = await res.json();
-        updateFile(entry.id, { url: data.url });
-
-        // Set active immediately — user can see the PDF viewer
-        if (!activeFileId) setActiveFileId(entry.id);
-        triggerRefresh();
-
-        if (data.indexing) {
-          // Fire-and-forget polling — non-blocking, runs in background
-          const pollUrl = `${API_URL}/api/pdf/indexing-status/${entry.sessionId}/${encodeURIComponent(file.name)}`;
-          (async () => {
-            for (let attempt = 0; attempt < 90; attempt++) {
-              await new Promise(r => setTimeout(r, 3000));
-              try {
-                const pollRes = await fetch(pollUrl);
-                const pollData = await pollRes.json();
-                if (pollData.status === 'ready') {
-                  updateFile(entry.id, { status: 'ready' });
-                  markReindexed(entry.sessionId);
-                  triggerRefresh();
-                  return;
-                }
-                if (pollData.status === 'error') {
-                  updateFile(entry.id, { status: 'error' });
-                  return;
-                }
-              } catch { /* retry */ }
-            }
-            // Timeout after ~4.5 min — mark ready anyway (text is likely done)
-            updateFile(entry.id, { status: 'ready' });
-            markReindexed(entry.sessionId);
-          })();
-          // Don't await — continue to next file immediately
-          updateFile(entry.id, { status: 'uploading' });
+        if (result === 'error') {
+          updateFile(entry.id, { status: 'error', error: 'Indexing failed — the file may be corrupted or protected.' });
+          notify('Indexing Failed', `"${file.name}" was uploaded but could not be indexed.`, 'error');
         } else {
           updateFile(entry.id, { status: 'ready' });
           markReindexed(entry.sessionId);
+          triggerRefresh();
         }
-      } catch {
-        updateFile(entry.id, { status: 'error' });
+      } else {
+        updateFile(entry.id, { status: 'ready' });
+        markReindexed(entry.sessionId);
       }
+    } catch (err) {
+      // Swallow user-initiated cancellation; surface real failures.
+      if (axiosAborted(err)) return;
+      const msg = err instanceof Error ? err.message : 'Upload failed.';
+      updateFile(entry.id, { status: 'error', error: msg });
+      notify('Upload Failed', `"${file.name}": ${msg}`, 'error');
+    } finally {
+      abortControllers.current.delete(entry.id);
+      lastProgressEmit.current.delete(entry.id);
     }
-  }, [token, activeFileId, addFile, updateFile, setActiveFileId, markReindexed, triggerRefresh]);
+  }, [token, emitProgress, updateFile, setActiveFileId, triggerRefresh, markReindexed]);
+
+  const processFiles = useCallback(async (fileList: FileList | File[]) => {
+    const arr = Array.from(fileList);
+
+    // Fail-fast client-side validation — reject bad files before any bandwidth.
+    const accepted: { file: File; entry: PdfFile }[] = [];
+    for (const f of arr) {
+      const sizeStr = (f.size / (1024 * 1024)).toFixed(1) + ' MB';
+      const sessionId = crypto.randomUUID();
+      const base: Omit<PdfFile, 'status'> = {
+        id: `${f.name}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: f.name,
+        size: sizeStr,
+        sessionId,
+      };
+      const validationError = validateFile(f);
+      if (validationError) {
+        addFile({ ...base, status: 'error', error: validationError });
+        notify('File Rejected', `"${f.name}": ${validationError}`, 'error');
+        continue;
+      }
+      const entry: PdfFile = { ...base, status: 'uploading', progress: 0 };
+      addFile(entry);
+      accepted.push({ file: f, entry });
+    }
+
+    // Bounded-concurrency worker pool — parallel uploads with a sane cap so we
+    // don't open one connection per dropped file. Each worker drains the queue.
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < accepted.length) {
+        const job = accepted[cursor++];
+        await uploadOne(job.file, job.entry);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(UPLOAD_CONCURRENCY, accepted.length) }, worker),
+    );
+  }, [addFile, uploadOne]);
+
+  // Cancel an in-flight upload and drop its placeholder.
+  const cancelUpload = useCallback((id: string) => {
+    abortControllers.current.get(id)?.abort();
+    abortControllers.current.delete(id);
+    removeFile(id);
+  }, [removeFile]);
 
   const handleRemoveFile = useCallback((id: string) => {
+    abortControllers.current.get(id)?.abort();
+    abortControllers.current.delete(id);
     removeFile(id);
   }, [removeFile]);
 
@@ -349,6 +436,7 @@ export function PdfAnalysis() {
         activeId={activeFileId}
         onSelect={setActiveFileId}
         onRemove={handleRemoveFile}
+        onCancel={cancelUpload}
         onUpload={processFiles}
       />
 
@@ -385,7 +473,11 @@ export function PdfAnalysis() {
             title={currentFile?.name ?? 'Document Chat'}
             subtitle={
               currentFile?.status === 'uploading'
-                ? 'Uploading & indexing…'
+                ? `Uploading… ${currentFile.progress ?? 0}%`
+                : currentFile?.status === 'indexing'
+                ? 'Indexing for chat…'
+                : currentFile?.status === 'error'
+                ? (currentFile.error ?? 'Upload failed')
                 : currentFile
                 ? `${currentFile.size} · ready`
                 : 'Upload a PDF to start'
@@ -397,11 +489,21 @@ export function PdfAnalysis() {
             availableFilesToCompare={files.map(f => ({ id: f.id, name: f.name, sessionId: f.sessionId }))}
             initialMessage={
               currentFile ? (
-                currentFile.status === 'uploading' ? (
+                currentFile.status === 'error' ? (
+                  <div className="flex items-start gap-3 bg-red-50 p-4 rounded-xl border border-red-200">
+                    <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-red-800 font-bold text-sm mb-1">Upload failed</p>
+                      <p className="text-red-700 text-xs leading-relaxed">{currentFile.error}</p>
+                    </div>
+                  </div>
+                ) : currentFile.status === 'uploading' || currentFile.status === 'indexing' ? (
                   <div className="flex items-center gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
                     <Loader2 className="h-5 w-5 animate-spin text-amber-600 shrink-0" />
                     <span className="text-amber-800 font-semibold text-sm">
-                      Uploading & indexing <strong>{currentFile.name}</strong>…
+                      {currentFile.status === 'uploading'
+                        ? <>Uploading <strong>{currentFile.name}</strong>… {currentFile.progress ?? 0}%</>
+                        : <>Indexing <strong>{currentFile.name}</strong> for chat…</>}
                     </span>
                   </div>
                 ) : (
@@ -497,7 +599,7 @@ function EmptyState({ onUpload, onHardReset }: { onUpload: (fl: FileList) => voi
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.docx,.txt"
+            accept={ACCEPT_ATTR}
             onChange={e => e.target.files?.length && onUpload(e.target.files)}
           />
           <div className={clsx('p-4 rounded-2xl transition-colors', isDragging ? 'bg-stone-200' : 'bg-white border border-stone-200 shadow-sm')}>
@@ -507,7 +609,7 @@ function EmptyState({ onUpload, onHardReset }: { onUpload: (fl: FileList) => voi
             <p className="font-bold text-stone-800 text-lg mb-1">
               {isDragging ? 'Release to upload' : 'Drop files here or click to browse'}
             </p>
-            <p className="text-sm text-stone-400">PDF, DOCX, TXT — multiple files supported</p>
+            <p className="text-sm text-stone-400">PDF, DOCX, TXT · up to {MAX_FILE_SIZE_MB} MB · multiple files supported</p>
           </div>
         </div>
 

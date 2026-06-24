@@ -45,6 +45,15 @@ PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 
 # Script paths
 RUN_SUMMARIZER_SCRIPT = os.path.join(PROJECT_ROOT, "summarizer", "run_summarizer.py")
+# Hard ceiling (seconds) for the summarizer subprocess so a stalled model call
+# can't hang the request indefinitely. Env-overridable.
+try:
+    SUMMARIZER_TIMEOUT_SECONDS = int(os.getenv("SUMMARIZER_TIMEOUT_SECONDS", "180"))
+except ValueError:
+    SUMMARIZER_TIMEOUT_SECONDS = 180
+# Groq model for the summarizer. gemma2-9b-it was decommissioned; default to the
+# current production model (see agents/model_router.py). Env-overridable.
+SUMMARIZER_MODEL = os.getenv("SUMMARIZER_MODEL", "llama-3.3-70b-versatile")
 RUN_COMPARISON_SCRIPT = os.path.join(PROJECT_ROOT, "summarization with critical review", "run_comparison.py")
 RUN_KG_SCRIPT = os.path.join(PROJECT_ROOT, "Knowledge_Graph_0.1", "run_kg.py")
 RUN_KG_QUERY_SCRIPT = os.path.join(PROJECT_ROOT, "Knowledge_Graph_0.1", "run_kg_query.py")
@@ -103,7 +112,16 @@ os.makedirs("data/uploads", exist_ok=True)
 app.mount("/api/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
 
-# ── Pre-warm embedding model at startup (background thread) ──────────────────
+# ── Pre-warm the upload pipeline at startup (background thread) ───────────────
+# The first upload otherwise pays cold-start costs on its critical path:
+#   1. SentenceTransformer weights load (the big one),
+#   2. first-time construction of the PDF pipeline (EnhancedRAGSystem → lazy
+#      imports of the PDF processor / chunker / retriever / validator),
+#   3. first-use construction of each agent singleton ("all agents" feel slow
+#      the first time they are touched).
+# All three are idempotent process-wide singletons, so loading them once here —
+# off any request thread — means the first real upload reuses warm objects.
+# This is a latency move only: identical code paths, no behavioural change.
 def _prewarm_embedding_model():
     """Load the SentenceTransformer model once at startup so first upload is fast."""
     try:
@@ -112,14 +130,45 @@ def _prewarm_embedding_model():
         MULTIMODELRAG_DIR_PW = os.path.join(PROJECT_ROOT_PW, "multimodelrag")
         if MULTIMODELRAG_DIR_PW not in _sys.path:
             _sys.path.append(MULTIMODELRAG_DIR_PW)
+        import time as _t
         from vector_store import _get_shared_embedding_model
         _get_shared_embedding_model("sentence-transformers/all-MiniLM-L6-v2")
-    except Exception as e:
-        print(f"[PREWARM] Embedding model pre-load failed (non-fatal): {e}")
 
-import threading as _threading_prewarm
-_prewarm_thread = _threading_prewarm.Thread(target=_prewarm_embedding_model, daemon=True)
-_prewarm_thread.start()
+        if not GROQ_API_KEY:
+            # No key → agents can't be built; embedding warm-up alone still helps.
+            print("[PREWARM] Embedding warmed; skipping agent/pipeline warm-up (no GROQ_API_KEY).")
+            return
+
+        # Warm the PDF pipeline construction + its lazy module imports by building
+        # one throwaway EnhancedRAGSystem (discarded immediately — not registered
+        # to any session, so it introduces no shared/mutable state or races).
+        t0 = _t.perf_counter()
+        try:
+            from enhanced_rag_system import EnhancedRAGSystem, EnhancedRAGConfig
+            _throwaway = EnhancedRAGSystem(config=EnhancedRAGConfig(), groq_api_key=GROQ_API_KEY)
+            del _throwaway
+            print(f"[PREWARM] PDF pipeline construction warmed in {_t.perf_counter()-t0:.1f}s")
+        except Exception as e:
+            print(f"[PREWARM] PDF pipeline warm-up failed (non-fatal): {e}")
+
+        # Warm the agent singletons the upload flow touches, so their first real
+        # use doesn't pay construction latency. Each getter is idempotent.
+        for name, getter in (
+            ("pdf", get_pdf_agent),
+            ("chat", get_chat_agent),
+            ("vision", get_vision_agent),
+            ("citation", get_citation_agent),
+        ):
+            try:
+                getter()
+            except Exception as e:
+                print(f"[PREWARM] {name} agent warm-up failed (non-fatal): {e}")
+        print("[PREWARM] Agent singletons warmed.")
+    except Exception as e:
+        print(f"[PREWARM] Pipeline pre-load failed (non-fatal): {e}")
+
+# NOTE: the warm-up thread is started AFTER the agent getters are defined (below),
+# so the function can reference them safely with no import-order race.
 
 # Initialize Agents
 # Note: Ensure GROQ_API_KEY is set in environment variables
@@ -218,6 +267,10 @@ def get_video_agent():
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
         video_agent = VideoAgent(groq_api_key=GROQ_API_KEY)
     return video_agent
+
+# Start the pipeline warm-up now that the agent getters exist (see _prewarm_embedding_model).
+import threading as _threading_prewarm
+_threading_prewarm.Thread(target=_prewarm_embedding_model, daemon=True).start()
 
 # Pydantic Models
 class SearchRequest(BaseModel):
@@ -1314,7 +1367,7 @@ def extract_summary(request: SummarizeRequest):
         ensure_pdf_exists(pdf_path, request.pdf_url)
             
         output_path = f"{pdf_path}.summary.json"
-        
+
         if not os.path.exists(output_path):
             cmd = [
                 sys.executable,
@@ -1322,15 +1375,37 @@ def extract_summary(request: SummarizeRequest):
                 pdf_path,
                 output_path,
                 os.getenv("GROQ_API_KEY", ""),
-                "gemma2-9b-it"
+                SUMMARIZER_MODEL
             ]
-            
-            proc = subprocess.run(cmd, capture_output=True, text=True)
+
+            # Bound the model-backed summarizer so a stalled call can't hang the
+            # request forever; surface a clear timeout instead.
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=SUMMARIZER_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                # Drop any partial output so the next attempt regenerates cleanly.
+                if os.path.exists(output_path):
+                    try: os.remove(output_path)
+                    except OSError: pass
+                raise HTTPException(
+                    status_code=504,
+                    detail="Summarizer timed out — the document may be very large or the model is slow. Please try again.",
+                )
             if proc.returncode != 0:
+                if os.path.exists(output_path):
+                    try: os.remove(output_path)
+                    except OSError: pass
                 raise HTTPException(status_code=500, detail=f"Summarizer failed: {proc.stderr}")
-                
-        with open(output_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+
+        # Guard against a corrupt/partial cache file from a prior failed run.
+        try:
+            with open(output_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            if os.path.exists(output_path):
+                try: os.remove(output_path)
+                except OSError: pass
+            raise HTTPException(status_code=500, detail=f"Summary output was unreadable; please retry. ({e})")
             
         report_url = None
         if data.get("report_pdf_base64"):

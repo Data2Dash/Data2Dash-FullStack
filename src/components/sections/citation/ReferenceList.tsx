@@ -1,6 +1,6 @@
 import React from 'react';
 import { ExternalLink, AlertCircle, RotateCcw } from 'lucide-react';
-import { CitationStyle } from '../../../api/citationApi';
+import { CitationStyle, citationToText } from '../../../api/citationApi';
 import { Citation } from '../CitationWorkspace';
 
 interface ReferenceListProps {
@@ -17,7 +17,9 @@ export function ReferenceList({ citations, activeStyle, onRetry }: ReferenceList
       <h3 className="text-lg font-bold text-stone-900 mb-8 tracking-tight">References</h3>
       <ol className="space-y-5" style={{ counterReset: 'ref-counter' }}>
         {citations.map((cite, idx) => {
-          const text = cite[activeStyle];
+          // Defensive: coerce to string in case a structured { citation, reference }
+          // object reaches here from legacy/persisted data — never render an object.
+          const text = citationToText(cite[activeStyle]);
           const isMissing = !text;
 
           return (
