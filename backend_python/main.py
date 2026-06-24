@@ -1263,7 +1263,8 @@ async def reindex_pdf(request: PDFReindexRequest):
 def get_figures(session_id: str, filename: str, pdf_url: Optional[str] = None):
     """Extract and list figures from a PDF"""
     agent = get_vision_agent()
-    pdf_path = os.path.join("data", "uploads", session_id, filename)
+    safe_filename = re.sub(r'[<>:"|?*]', '_', filename)
+    pdf_path = os.path.join("data", "uploads", session_id, safe_filename)
     
     try:
         ensure_pdf_exists(pdf_path, pdf_url)
@@ -1945,8 +1946,12 @@ async def download_uploaded_pdf(session_id: str, file_name: str):
 
 
 @app.delete("/api/pdf/delete/{file_name}")
-async def delete_uploaded_pdf(file_name: str):
-    """Delete an uploaded PDF by filename (searches all session folders) and purge its vectors."""
+async def delete_uploaded_pdf(
+    file_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete an uploaded PDF: physical file, vectors, DB records (File + associated ChatSession/messages)."""
     from pathlib import Path
 
     # Search for the file across all session directories
@@ -1963,13 +1968,27 @@ async def delete_uploaded_pdf(file_name: str):
                     found_session = session_dir.name
                     break
 
-    if not found_path:
-        raise HTTPException(status_code=404, detail="Target file not found.")
-
-    try:
-        os.remove(found_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete file from storage: {str(e)}")
+    # Delete physical file + session directory artifacts
+    if found_path:
+        try:
+            session_dir_path = found_path.parent
+            os.remove(found_path)
+            # Clean up derived files (summary, report, compare, kg, figures)
+            for artifact in session_dir_path.iterdir():
+                if artifact.name.startswith(found_path.stem):
+                    try:
+                        os.remove(artifact)
+                    except Exception:
+                        pass
+            figures_dir = session_dir_path / "figures"
+            if figures_dir.is_dir():
+                shutil.rmtree(figures_dir, ignore_errors=True)
+            # Remove session dir if empty
+            remaining = list(session_dir_path.iterdir())
+            if not remaining:
+                session_dir_path.rmdir()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete file from storage: {str(e)}")
 
     # Vector purge — remove embeddings and in-memory RAG system for this session
     try:
@@ -1985,11 +2004,28 @@ async def delete_uploaded_pdf(file_name: str):
                 files = agent.uploaded_files[found_session]
                 if file_name in files:
                     files.remove(file_name)
-        print(f"Vector embeddings for '{file_name}' purged successfully.")
     except Exception as e:
         print(f"Warning: Vector DB purge failed: {str(e)}")
 
-    return {"status": "success", "message": f"File '{file_name}' and its vector context successfully purged."}
+    # DB cleanup — remove File record and associated ChatSession (cascades to messages)
+    db_file = db.query(FileModel).filter(
+        FileModel.filename == file_name,
+        FileModel.user_id == current_user.id,
+    ).first()
+    if db_file:
+        db.delete(db_file)
+
+    if found_session:
+        chat_session = db.query(ChatSession).filter(
+            ChatSession.session_id == found_session,
+            ChatSession.user_id == current_user.id,
+        ).first()
+        if chat_session:
+            db.delete(chat_session)
+
+    db.commit()
+
+    return {"status": "success", "message": f"File '{file_name}' and all associated data purged."}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

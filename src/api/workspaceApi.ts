@@ -86,4 +86,22 @@ export const workspaceApi = {
     });
     return response.data;
   },
+
+  deleteSession: async (sessionId: string, token: string): Promise<void> => {
+    await axios.delete(`${API_BASE_URL}/api/workspace/sessions/${sessionId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  deleteSearch: async (searchId: number, token: string): Promise<void> => {
+    await axios.delete(`${API_BASE_URL}/api/workspace/searches/${searchId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  deleteFile: async (fileName: string, token: string): Promise<void> => {
+    await axios.delete(`${API_BASE_URL}/api/pdf/delete/${encodeURIComponent(fileName)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
 };

@@ -33,3 +33,4 @@ bcrypt
 alembic
 python-dotenv
 reportlab
+moviepy

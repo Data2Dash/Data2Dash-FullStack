@@ -241,6 +241,23 @@ def save_search(
     return SearchHistoryOut.model_validate(entry)
 
 
+@router.delete("/searches/{search_id}", status_code=204)
+def delete_search(
+    search_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a single search history entry."""
+    entry = db.query(SearchHistory).filter(
+        SearchHistory.search_id == search_id,
+        SearchHistory.user_id == current_user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Search entry not found")
+    db.delete(entry)
+    db.commit()
+
+
 @router.delete("/searches", status_code=204)
 def clear_search_history(
     current_user: User = Depends(get_current_user),

@@ -24,7 +24,7 @@ interface SidebarProps {
 
 export function Sidebar({ summary }: SidebarProps) {
   const { user, isAuthenticated, token } = useAuthStore();
-  const { docs } = useDocumentLibrary(user?.id ?? null, token);
+  const { docs, deleteDoc } = useDocumentLibrary(user?.id ?? null, token);
   const setPendingOpenDocId = useCitationStore(s => s.setPendingOpenDocId);
   const { sessionId, setMessages, setSessionId, resetChat, triggerRefresh } = useChatStore();
   const { isSidebarOpen, toggleSidebar } = useUIStore();
@@ -37,6 +37,8 @@ export function Sidebar({ summary }: SidebarProps) {
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [deletedNames, setDeletedNames] = useState<Set<string>>(new Set());
+  const [deletedSessionIds, setDeletedSessionIds] = useState<Set<string>>(new Set());
+  const [deletedSearchIds, setDeletedSearchIds] = useState<Set<number>>(new Set());
 
   if (!isAuthenticated) return null;
 
@@ -81,20 +83,41 @@ export function Sidebar({ summary }: SidebarProps) {
         <>
           <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Recent Chats</p>
           <div className="space-y-1">
-            {summary?.recent_sessions?.map(s => (
-              <button 
-                key={s.session_id} 
-                onClick={() => handleSessionClick(s.session_id)}
-                className={clsx(
-                  "w-full text-left px-3 py-2 rounded-xl text-sm font-medium truncate transition-colors",
-                  sessionId === s.session_id 
-                    ? "bg-stone-900 text-white shadow-soft" 
-                    : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
-                )}
-              >
-                {s.title}
-              </button>
-            )) || <p className="text-xs text-stone-400 px-3">No recent chats.</p>}
+            {summary?.recent_sessions?.filter(s => !deletedSessionIds.has(s.session_id)).length
+              ? summary.recent_sessions.filter(s => !deletedSessionIds.has(s.session_id)).map(s => (
+                <div key={s.session_id} className="group flex items-center gap-1">
+                  <button
+                    onClick={() => handleSessionClick(s.session_id)}
+                    className={clsx(
+                      "flex-1 min-w-0 text-left px-3 py-2 rounded-xl text-sm font-medium truncate transition-colors",
+                      sessionId === s.session_id
+                        ? "bg-stone-900 text-white shadow-soft"
+                        : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
+                    )}
+                  >
+                    {s.title}
+                  </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!token) return;
+                      setDeletedSessionIds(prev => new Set(prev).add(s.session_id));
+                      if (sessionId === s.session_id) resetChat();
+                      try {
+                        await workspaceApi.deleteSession(s.session_id, token);
+                        triggerRefresh();
+                      } catch {
+                        setDeletedSessionIds(prev => { const n = new Set(prev); n.delete(s.session_id); return n; });
+                      }
+                    }}
+                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                    title="Delete chat"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))
+              : <p className="text-xs text-stone-400 px-3">No recent chats.</p>}
           </div>
         </>
       );
@@ -105,27 +128,47 @@ export function Sidebar({ summary }: SidebarProps) {
         <>
           <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Recent Searches</p>
           <div className="space-y-1">
-            {summary?.recent_searches?.length
-              ? summary.recent_searches.slice(0, 20).map(s => (
-                <button
-                  key={s.search_id}
-                  onClick={() => {
-                    const local = searchSessions.find(ls => ls.query === s.query_text);
-                    if (local) loadSession(local.id);
-                    navigate('/search');
-                  }}
-                  className={clsx(
-                    "w-full text-left px-3 py-2 rounded-xl text-sm font-medium truncate transition-colors",
-                    searchSessions.find(ls => ls.query === s.query_text && ls.id === activeSearchId)
-                      ? "bg-stone-900 text-white shadow-soft"
-                      : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
-                  )}
-                >
-                  {s.query_text}
-                </button>
-              ))
-              : <p className="text-xs text-stone-400 px-3">No recent searches.</p>
-            }
+            {(() => {
+              const filtered = summary?.recent_searches?.filter(s => !deletedSearchIds.has(s.search_id)) || [];
+              return filtered.length
+                ? filtered.slice(0, 20).map(s => (
+                  <div key={s.search_id} className="group flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        const local = searchSessions.find(ls => ls.query === s.query_text);
+                        if (local) loadSession(local.id);
+                        navigate('/search');
+                      }}
+                      className={clsx(
+                        "flex-1 min-w-0 text-left px-3 py-2 rounded-xl text-sm font-medium truncate transition-colors",
+                        searchSessions.find(ls => ls.query === s.query_text && ls.id === activeSearchId)
+                          ? "bg-stone-900 text-white shadow-soft"
+                          : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
+                      )}
+                    >
+                      {s.query_text}
+                    </button>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!token) return;
+                        setDeletedSearchIds(prev => new Set(prev).add(s.search_id));
+                        try {
+                          await workspaceApi.deleteSearch(s.search_id, token);
+                          triggerRefresh();
+                        } catch {
+                          setDeletedSearchIds(prev => { const n = new Set(prev); n.delete(s.search_id); return n; });
+                        }
+                      }}
+                      className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                      title="Delete search"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))
+                : <p className="text-xs text-stone-400 px-3">No recent searches.</p>;
+            })()}
           </div>
         </>
       );
@@ -152,7 +195,7 @@ export function Sidebar({ summary }: SidebarProps) {
         e.stopPropagation();
         const sid = getSessionId(file);
         const name = getDisplayName(file);
-        if (!sid || !file.filename) return;
+        if (!sid || !file.filename || !token) return;
 
         setDeletedNames(prev => {
           const next = new Set(prev);
@@ -161,6 +204,7 @@ export function Sidebar({ summary }: SidebarProps) {
           next.add(file.filename);
           return next;
         });
+        setDeletedSessionIds(prev => new Set(prev).add(sid));
 
         const activeFile = pdfStore.files.find(f => f.id === pdfStore.activeFileId);
         if (activeFile && activeFile.sessionId === sid) {
@@ -168,14 +212,11 @@ export function Sidebar({ summary }: SidebarProps) {
         }
 
         try {
-          const res = await fetch(`${API_URL}/api/pdf/delete/${encodeURIComponent(file.filename)}`, { method: 'DELETE' });
-          if (!res.ok) {
-            setDeletedNames(prev => { const next = new Set(prev); next.delete(file.file_id); next.delete(name); next.delete(file.filename); return next; });
-            return;
-          }
+          await workspaceApi.deleteFile(file.filename, token);
           triggerRefresh();
         } catch {
           setDeletedNames(prev => { const next = new Set(prev); next.delete(file.file_id); next.delete(name); next.delete(file.filename); return next; });
+          setDeletedSessionIds(prev => { const n = new Set(prev); n.delete(sid); return n; });
         }
       };
 
@@ -245,7 +286,7 @@ export function Sidebar({ summary }: SidebarProps) {
         }
       };
 
-      const pdfSessions = summary?.recent_sessions?.filter(s => s.session_type === 'pdf') || [];
+      const pdfSessions = summary?.recent_sessions?.filter(s => s.session_type === 'pdf' && !deletedSessionIds.has(s.session_id)) || [];
 
       // Filter: exclude deleted files and deduplicate by display name
       const uniqueFiles = (() => {
@@ -295,19 +336,37 @@ export function Sidebar({ summary }: SidebarProps) {
               <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 mt-5 px-1">PDF Chats</p>
               <div className="space-y-1">
                 {pdfSessions.map(s => (
-                  <button
-                    key={s.session_id}
-                    onClick={() => handlePdfSessionClick(s)}
-                    className={clsx(
-                      "w-full text-left px-3 py-2 rounded-xl text-sm font-medium truncate flex items-center gap-2 transition-colors",
-                      pdfStore.files.find(f => f.id === pdfStore.activeFileId)?.sessionId === s.session_id
-                        ? "bg-stone-900 text-white shadow-soft"
-                        : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
-                    )}
-                  >
-                    <MessageSquare className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-                    <span className="truncate">{s.title}</span>
-                  </button>
+                  <div key={s.session_id} className="group flex items-center gap-1">
+                    <button
+                      onClick={() => handlePdfSessionClick(s)}
+                      className={clsx(
+                        "flex-1 min-w-0 text-left px-3 py-2 rounded-xl text-sm font-medium truncate flex items-center gap-2 transition-colors",
+                        pdfStore.files.find(f => f.id === pdfStore.activeFileId)?.sessionId === s.session_id
+                          ? "bg-stone-900 text-white shadow-soft"
+                          : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
+                      )}
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                      <span className="truncate">{s.title}</span>
+                    </button>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!token) return;
+                        setDeletedSessionIds(prev => new Set(prev).add(s.session_id));
+                        try {
+                          await workspaceApi.deleteSession(s.session_id, token);
+                          triggerRefresh();
+                        } catch {
+                          setDeletedSessionIds(prev => { const n = new Set(prev); n.delete(s.session_id); return n; });
+                        }
+                      }}
+                      className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                      title="Delete chat"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </>
@@ -321,19 +380,32 @@ export function Sidebar({ summary }: SidebarProps) {
         <>
           <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Your Library</p>
           <div className="space-y-1">
-            {docs.slice(0, 15).map(doc => (
-              <button 
-                key={doc.id} 
-                onClick={() => {
-                  setPendingOpenDocId(doc.id);
-                  if (path !== '/citation') navigate('/citation');
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl hover:bg-stone-100 text-sm font-medium text-stone-600 hover:text-stone-900 truncate flex items-center gap-2 transition-colors"
-              >
-                <BookMarked className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-                <span className="truncate">{doc.title || 'Untitled'}</span>
-              </button>
-            )) || <p className="text-xs text-stone-400 px-3">Library is empty.</p>}
+            {docs.length
+              ? docs.slice(0, 15).map(doc => (
+                <div key={doc.id} className="group flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      setPendingOpenDocId(doc.id);
+                      if (path !== '/citation') navigate('/citation');
+                    }}
+                    className="flex-1 min-w-0 text-left px-3 py-2 rounded-xl hover:bg-stone-100 text-sm font-medium text-stone-600 hover:text-stone-900 truncate flex items-center gap-2 transition-colors"
+                  >
+                    <BookMarked className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                    <span className="truncate">{doc.title || 'Untitled'}</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteDoc(doc.id);
+                    }}
+                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                    title="Delete document"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))
+              : <p className="text-xs text-stone-400 px-3">Library is empty.</p>}
           </div>
         </>
       );

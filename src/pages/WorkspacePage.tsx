@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { workspaceApi, WorkspaceSummary } from '../api/workspaceApi';
-import { 
-  FileText, MessageSquare, Search, 
-  Clock, ArrowRight, Activity, Zap, 
-  FolderOpen, Plus, BookMarked
+import { workspaceApi, WorkspaceSummary, WorkspaceFile } from '../api/workspaceApi';
+import {
+  FileText, MessageSquare, Search,
+  Clock, ArrowRight, Activity, Zap,
+  FolderOpen, Plus, BookMarked, Trash2
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDocumentLibrary } from '../store/useDocumentLibrary';
@@ -21,11 +21,19 @@ interface WorkspaceProps {
 export function WorkspacePage({ summary }: WorkspaceProps) {
   const { user, token } = useAuthStore();
   const navigate = useNavigate();
-  const { docs } = useDocumentLibrary(user?.id ?? null, token);
+  const { docs, deleteDoc } = useDocumentLibrary(user?.id ?? null, token);
   const setPendingOpenDocId = useCitationStore(s => s.setPendingOpenDocId);
   const { sessions: searchSessions, loadSession } = useSearchStore();
-  const { setSessionId, setMessages } = useChatStore();
+  const { setSessionId, setMessages, triggerRefresh } = useChatStore();
   const pdfStore = usePdfStore();
+
+  const [hiddenFiles, setHiddenFiles] = useState<Set<string>>(new Set());
+  const [hiddenSessions, setHiddenSessions] = useState<Set<string>>(new Set());
+  const [hiddenSearches, setHiddenSearches] = useState<Set<number>>(new Set());
+
+  const visibleFiles = summary?.recent_files?.filter(f => !hiddenFiles.has(f.file_id)) ?? [];
+  const visibleSessions = summary?.recent_sessions?.filter(s => !hiddenSessions.has(s.session_id)) ?? [];
+  const visibleSearches = summary?.recent_searches?.filter(s => !hiddenSearches.has(s.search_id)) ?? [];
 
   const loading = !summary;
 
@@ -143,9 +151,9 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
         {/* Overview Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'Total Files', value: summary?.file_count ?? 0, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
-            { label: 'Chat Sessions', value: summary?.session_count ?? 0, icon: MessageSquare, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-            { label: 'Recent Searches', value: summary?.recent_searches?.length ?? 0, icon: Search, color: 'text-amber-500', bg: 'bg-amber-50' },
+            { label: 'Total Files', value: visibleFiles.length, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
+            { label: 'Chat Sessions', value: visibleSessions.length, icon: MessageSquare, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+            { label: 'Recent Searches', value: visibleSearches.length, icon: Search, color: 'text-amber-500', bg: 'bg-amber-50' },
             { label: 'Activity Score', value: 'High', icon: Activity, color: 'text-purple-500', bg: 'bg-purple-50' },
           ].map((stat, i) => (
             <div key={i} className="bg-white rounded-3xl p-5 shadow-sm border border-stone-100/50 hover:shadow-md transition-all group">
@@ -177,7 +185,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
               </button>
             </div>
 
-            {summary?.recent_files.length === 0 ? (
+            {visibleFiles.length === 0 ? (
               <div className="py-10 flex flex-col items-center justify-center text-center">
                 <div className="h-12 w-12 bg-stone-50 rounded-xl flex items-center justify-center mb-3">
                   <FolderOpen className="h-6 w-6 text-stone-300" />
@@ -187,7 +195,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
               </div>
             ) : (
               <div className="space-y-3">
-                {summary?.recent_files.map(f => (
+                {visibleFiles.map(f => (
                   <div key={f.file_id} onClick={() => handleFileClick(f)} className="group flex items-center justify-between p-4 rounded-2xl hover:bg-stone-50 border border-transparent hover:border-stone-100 transition-all cursor-pointer">
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="h-8 w-8 rounded-lg bg-stone-100 flex items-center justify-center shrink-0">
@@ -202,9 +210,28 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                         </div>
                       </div>
                     </div>
-                    <div className="text-xs font-semibold text-stone-400 shrink-0 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Clock className="h-3.5 w-3.5" />
-                      {new Date(f.uploaded_at).toLocaleDateString()}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-xs font-semibold text-stone-400 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Clock className="h-3.5 w-3.5" />
+                        {new Date(f.uploaded_at).toLocaleDateString()}
+                      </div>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!token) return;
+                          setHiddenFiles(prev => new Set(prev).add(f.file_id));
+                          try {
+                            await workspaceApi.deleteFile(f.filename, token);
+                            triggerRefresh();
+                          } catch {
+                            setHiddenFiles(prev => { const n = new Set(prev); n.delete(f.file_id); return n; });
+                          }
+                        }}
+                        className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                        title="Delete file"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -226,26 +253,45 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                 </div>
               </div>
 
-              {summary?.recent_sessions.length === 0 ? (
+              {visibleSessions.length === 0 ? (
                 <div className="py-8 text-center text-sm font-medium text-stone-400">
                   No active chats.
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {summary?.recent_sessions.map(s => (
-                    <div key={s.session_id} onClick={() => handleSessionClick(s.session_id, s.session_type)} className="group cursor-pointer">
-                      <p className="text-sm font-semibold text-stone-800 group-hover:text-emerald-600 transition-colors truncate mb-1">
-                        {s.title}
-                      </p>
-                      <div className="flex items-center gap-2 text-[11px] font-bold text-stone-400 uppercase tracking-wider">
-                        <span>{s.session_type}</span>
-                        {s.last_message_at && (
-                          <>
-                            <span>•</span>
-                            <span>{new Date(s.last_message_at).toLocaleDateString()}</span>
-                          </>
-                        )}
+                  {visibleSessions.map(s => (
+                    <div key={s.session_id} onClick={() => handleSessionClick(s.session_id, s.session_type)} className="group cursor-pointer flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-stone-800 group-hover:text-emerald-600 transition-colors truncate mb-1">
+                          {s.title}
+                        </p>
+                        <div className="flex items-center gap-2 text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                          <span>{s.session_type}</span>
+                          {s.last_message_at && (
+                            <>
+                              <span>•</span>
+                              <span>{new Date(s.last_message_at).toLocaleDateString()}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!token) return;
+                          setHiddenSessions(prev => new Set(prev).add(s.session_id));
+                          try {
+                            await workspaceApi.deleteSession(s.session_id, token);
+                            triggerRefresh();
+                          } catch {
+                            setHiddenSessions(prev => { const n = new Set(prev); n.delete(s.session_id); return n; });
+                          }
+                        }}
+                        className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                        title="Delete chat"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -269,29 +315,47 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                 </button>
               </div>
 
-              {!summary?.recent_searches?.length ? (
+              {visibleSearches.length === 0 ? (
                 <div className="py-8 text-center text-sm font-medium text-stone-400">
                   No search history.
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {summary.recent_searches.slice(0, 5).map(s => (
+                  {visibleSearches.slice(0, 5).map(s => (
                     <div
                       key={s.search_id}
                       onClick={() => {
-                        // Try to restore local cache, else just navigate
                         const local = searchSessions.find(ls => ls.query === s.query_text);
                         if (local) loadSession(local.id);
                         navigate('/search');
                       }}
-                      className="group cursor-pointer"
+                      className="group cursor-pointer flex items-start justify-between gap-2"
                     >
-                      <p className="text-sm font-semibold text-stone-700 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug mb-1">
-                        &ldquo;{s.query_text}&rdquo;
-                      </p>
-                      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                        {new Date(s.timestamp).toLocaleDateString()}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-stone-700 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug mb-1">
+                          &ldquo;{s.query_text}&rdquo;
+                        </p>
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                          {new Date(s.timestamp).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!token) return;
+                          setHiddenSearches(prev => new Set(prev).add(s.search_id));
+                          try {
+                            await workspaceApi.deleteSearch(s.search_id, token);
+                            triggerRefresh();
+                          } catch {
+                            setHiddenSearches(prev => { const n = new Set(prev); n.delete(s.search_id); return n; });
+                          }
+                        }}
+                        className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                        title="Delete search"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -329,7 +393,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {docs.map(doc => (
-                <div 
+                <div
                   key={doc.id}
                   onClick={() => {
                     setPendingOpenDocId(doc.id);
@@ -341,6 +405,17 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                     <div className="h-8 w-8 rounded-lg bg-white shadow-sm border border-stone-100 flex items-center justify-center">
                       <FileText className="h-4 w-4 text-stone-400 group-hover:text-purple-500 transition-colors" />
                     </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteDoc(doc.id);
+                        triggerRefresh();
+                      }}
+                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                      title="Delete document"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   <h3 className="font-bold text-stone-900 text-base mb-1 truncate">{doc.title || 'Untitled'}</h3>
                   <div className="flex items-center gap-3 text-xs font-semibold text-stone-400">

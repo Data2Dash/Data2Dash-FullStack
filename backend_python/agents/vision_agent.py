@@ -15,7 +15,9 @@ class VisionAgent:
         Extract images from PDF and save them to a session and paper-specific directory.
         Returns a list of local paths to the extracted figures.
         """
+        import re as _re
         filename_no_ext = os.path.splitext(os.path.basename(pdf_path))[0]
+        filename_no_ext = _re.sub(r'[<>:"/\\|?*]', '_', filename_no_ext)
         figures_dir = os.path.join("data", "uploads", session_id, "figures", filename_no_ext)
         os.makedirs(figures_dir, exist_ok=True)
         

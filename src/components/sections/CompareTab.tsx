@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTabActivity } from './TabActivityContext';
 import { Loader2, Scale, Search, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -20,6 +21,7 @@ export function CompareTab({ sessionId, fileName, pdfUrl, availableFiles, isSear
   const [targetId, setTargetId] = useState<string>('');
   const [targetUrl, setTargetUrl] = useState<string>('');
   const [isComparing, setIsComparing] = useState(false);
+  useTabActivity('compare', isComparing);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any | null>(null);
 

@@ -24,6 +24,9 @@ import { AiMessageRenderer } from '../ui/AiMessageRenderer';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+import { TabActivityContext, useTabActivity } from './TabActivityContext';
+import type { TabActivityMap } from './TabActivityContext';
+
 interface Citation {
   content: string;
   metadata?: any;
@@ -50,6 +53,7 @@ interface Figure {
 function PodcastTab({ paperTitle, paperContent }: { paperTitle: string; paperContent: string }) {
   const [length, setLength] = useState<'Short' | 'Medium' | 'Long'>('Medium');
   const [isGenerating, setIsGenerating] = useState(false);
+  useTabActivity('podcast', isGenerating);
   const [status, setStatus] = useState<PodcastStatusResponse | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +137,7 @@ function VideoTab({ paperTitle, paperAbstract }: { paperTitle: string; paperAbst
   const [numSlides, setNumSlides] = useState<4 | 6 | 8 | 10>(6);
   const [voice, setVoice] = useState<VideoVoiceId>(VIDEO_VOICES[0].id);
   const [isGenerating, setIsGenerating] = useState(false);
+  useTabActivity('video', isGenerating);
   const [status, setStatus] = useState<VideoStatusResponse | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -292,10 +297,11 @@ function VideoTab({ paperTitle, paperAbstract }: { paperTitle: string; paperAbst
 // ────────────────────────────────────────────────────────────────────────────
 // Diagrams / Figures Tab
 // ────────────────────────────────────────────────────────────────────────────
-function DiagramTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileName: string | null; pdfUrl: string | null }) {
+function DiagramTab({ sessionId, fileName, pdfUrl, activated = false }: { sessionId: string; fileName: string | null; pdfUrl: string | null; activated?: boolean }) {
   const [figures, setFigures] = useState<Figure[]>([]);
   const [selectedFigure, setSelectedFigure] = useState<Figure | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // start true — show spinner immediately
+  const [isLoading, setIsLoading] = useState(!!fileName);
+  useTabActivity('diagram', isLoading);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -303,12 +309,12 @@ function DiagramTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileNa
   const [figureInput, setFigureInput] = useState('');
 
   useEffect(() => {
-    if (fileName) {
+    if (activated && fileName) {
+      setFigures([]);
+      setError(null);
       fetchFigures();
-    } else {
-      setIsLoading(false);
     }
-  }, [sessionId, fileName]);
+  }, [sessionId, fileName, activated]);
 
   const fetchFigures = async () => {
     if (!fileName) return;
@@ -325,7 +331,10 @@ function DiagramTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileNa
       setFigures(data.figures || []);
     } catch (e: any) {
       console.error('Error fetching figures:', e);
-      setError(e.message || 'Failed to extract figures.');
+      const msg = e?.name === 'TypeError'
+        ? 'Could not reach the server. Please check the backend is running and try again.'
+        : (e.message || 'Failed to extract figures.');
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -489,9 +498,10 @@ function DiagramTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileNa
 // surfacing a clear timeout (mirrors the Upload tab's uploadApi timeout pattern).
 const SUMMARY_TIMEOUT_MS = 180_000;
 
-function SummarizeTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileName: string | null; pdfUrl: string | null }) {
+function SummarizeTab({ sessionId, fileName, pdfUrl, activated = false }: { sessionId: string; fileName: string | null; pdfUrl: string | null; activated?: boolean }) {
   const [data, setData] = useState<{title: string; summary: string; report_url: string | null} | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  useTabActivity('report', isLoading);
   const [error, setError] = useState<string | null>(null);
 
   // Cancellation + stale-response guard so we only ever show the CURRENT file's
@@ -553,12 +563,11 @@ function SummarizeTab({ sessionId, fileName, pdfUrl }: { sessionId: string; file
   }, [sessionId, fileName, pdfUrl]);
 
   useEffect(() => {
-    if (fileName && fileName !== 'paper.pdf') {
+    if (activated && fileName && fileName !== 'paper.pdf') {
       fetchSummary();
     }
-    // Abort the in-flight summary when the file changes or the tab unmounts.
     return () => abortRef.current?.abort();
-  }, [fetchSummary, fileName]);
+  }, [fetchSummary, fileName, activated]);
 
   if (isLoading || fileName === null) return (
     <div className="flex flex-col items-center justify-center h-full gap-3">
@@ -596,9 +605,10 @@ function SummarizeTab({ sessionId, fileName, pdfUrl }: { sessionId: string; file
 // ────────────────────────────────────────────────────────────────────────────
 // Knowledge Graph Tab
 // ────────────────────────────────────────────────────────────────────────────
-function KnowledgeGraphTab({ sessionId, fileName, pdfUrl }: { sessionId: string; fileName: string | null; pdfUrl: string | null }) {
+function KnowledgeGraphTab({ sessionId, fileName, pdfUrl, activated = false }: { sessionId: string; fileName: string | null; pdfUrl: string | null; activated?: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  useTabActivity('graph', isLoading);
   const [error, setError] = useState<string | null>(null);
 
   const [chatNode, setChatNode] = useState<string | null>(null);
@@ -639,10 +649,10 @@ function KnowledgeGraphTab({ sessionId, fileName, pdfUrl }: { sessionId: string;
   }, [sessionId, fileName]);
 
   useEffect(() => {
-    if (fileName && fileName !== 'paper.pdf') {
+    if (activated && fileName && fileName !== 'paper.pdf') {
       fetchKG();
     }
-  }, [sessionId, fileName]);
+  }, [sessionId, fileName, activated]);
 
   const fetchKG = async () => {
     setIsLoading(true);
@@ -747,6 +757,7 @@ type QuizPhase = 'config' | 'loading' | 'playing' | 'results';
 
 function QuizTab({ sessionId, fileName }: { sessionId: string; fileName: string | null }) {
   const [phase, setPhase] = useState<QuizPhase>('config');
+  useTabActivity('quiz', phase === 'loading');
   const [numQuestions, setNumQuestions] = useState<5 | 10 | 20>(5);
   const [difficulty, setDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -1150,12 +1161,26 @@ export function PaperInteractionPanel({
   availableFilesToCompare,
   alwaysShowCompare,
 }: PaperInteractionPanelProps) {
-  const [activeTab, setActiveTab] = useState<string>('chat');
+  const [activeTab, _setActiveTab] = useState<string>('chat');
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set(['chat']));
+  const setActiveTab = useCallback((id: string) => {
+    _setActiveTab(id);
+    setVisitedTabs(prev => prev.has(id) ? prev : new Set(prev).add(id));
+  }, []);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Tab activity tracking — sub-tabs report loading state via context
+  const [tabActivity, setTabActivity] = useState<TabActivityMap>({});
+  const setTabActive = useCallback((tabId: string, active: boolean) => {
+    setTabActivity(prev => {
+      if (prev[tabId] === active) return prev;
+      return { ...prev, [tabId]: active };
+    });
+  }, []);
 
   // Use the provided fileName or fallback to the old calculation
   // IF propFileName is null, it means we ARE waiting for a filename (from import)
@@ -1221,6 +1246,7 @@ export function PaperInteractionPanel({
   };
 
   return (
+    <TabActivityContext.Provider value={{ activity: tabActivity, setTabActive }}>
     <div className="flex flex-col h-full bg-white">
       <div className="flex-none px-5 pt-5 pb-0 border-b border-stone-100">
         <div className="flex items-start justify-between mb-4">
@@ -1249,21 +1275,23 @@ export function PaperInteractionPanel({
 
             return tabs.map(({ id, Icon, label }) => (
               <button key={id} onClick={() => setActiveTab(id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
                   activeTab === id
                     ? id === 'quiz' ? 'bg-stone-900 text-white ring-2 ring-stone-900 ring-offset-1' : 'bg-stone-900 text-white'
                     : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'
                 }`}>
                 <Icon className="h-3.5 w-3.5" />{label}
+                {tabActivity[id] && activeTab !== id && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                )}
               </button>
             ));
           })()}
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {activeTab === 'chat' && (
-          /* ... chat content ... */
+      <div className="flex-1 min-h-0 overflow-hidden relative">
+        <div className={activeTab === 'chat' ? 'h-full' : 'hidden'}>
           <div className="flex h-full">
             <div className={`flex flex-col h-full transition-all ${selectedCitation ? 'w-1/2 border-r border-stone-100' : 'w-full'}`}>
               <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-5 custom-scrollbar">
@@ -1324,9 +1352,9 @@ export function PaperInteractionPanel({
               </div>
             )}
           </div>
-        )}
+        </div>
 
-        {activeTab === 'view' && (
+        <div className={activeTab === 'view' ? 'h-full' : 'hidden'}>
           <div className="h-full w-full bg-stone-100 flex flex-col relative overflow-hidden">
             {pdfUrl ? (
               <div className="flex flex-col h-full">
@@ -1352,16 +1380,17 @@ export function PaperInteractionPanel({
               </div>
             )}
           </div>
-        )}
+        </div>
 
-        {activeTab === 'quiz' && <QuizTab sessionId={sessionId} fileName={fileName} />}
-        {activeTab === 'diagram' && <DiagramTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}
-        {activeTab === 'podcast' && <PodcastTab paperTitle={title} paperContent={subtitle} />}
-        {activeTab === 'video' && <VideoTab paperTitle={title} paperAbstract={subtitle} />}
-        {activeTab === 'graph' && <KnowledgeGraphTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}
-        {activeTab === 'report' && <SummarizeTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} />}
-        {activeTab === 'compare' && <CompareTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} availableFiles={availableFilesToCompare} isSearchMode={alwaysShowCompare} />}
+        {visitedTabs.has('quiz') && <div className={activeTab === 'quiz' ? 'h-full' : 'hidden'}><QuizTab sessionId={sessionId} fileName={fileName} /></div>}
+        {visitedTabs.has('diagram') && <div className={activeTab === 'diagram' ? 'h-full' : 'hidden'}><DiagramTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} activated={visitedTabs.has('diagram')} /></div>}
+        {visitedTabs.has('podcast') && <div className={activeTab === 'podcast' ? 'h-full' : 'hidden'}><PodcastTab paperTitle={title} paperContent={subtitle} /></div>}
+        {visitedTabs.has('video') && <div className={activeTab === 'video' ? 'h-full' : 'hidden'}><VideoTab paperTitle={title} paperAbstract={subtitle} /></div>}
+        {visitedTabs.has('graph') && <div className={activeTab === 'graph' ? 'h-full' : 'hidden'}><KnowledgeGraphTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} activated={visitedTabs.has('graph')} /></div>}
+        {visitedTabs.has('report') && <div className={activeTab === 'report' ? 'h-full' : 'hidden'}><SummarizeTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} activated={visitedTabs.has('report')} /></div>}
+        {visitedTabs.has('compare') && <div className={activeTab === 'compare' ? 'h-full' : 'hidden'}><CompareTab sessionId={sessionId} fileName={fileName} pdfUrl={pdfUrl || null} availableFiles={availableFilesToCompare} isSearchMode={alwaysShowCompare} /></div>}
       </div>
     </div>
+    </TabActivityContext.Provider>
   );
 }
