@@ -28,6 +28,7 @@ export interface IndexingStatus {
   status: 'queued' | 'processing' | 'ready' | 'error' | 'unknown';
   progress?: string;
   message?: string;
+  assets?: { equations: number; tables: number; figures: number };
 }
 
 /** Returns an error message if the file is invalid, or null if it is acceptable. */
@@ -135,12 +136,14 @@ export const uploadApi = {
       signal,
       intervalMs = 3000,
       maxAttempts = 90,
+      onProgress,
     }: {
       sessionId: string;
       fileName: string;
       signal?: AbortSignal;
       intervalMs?: number;
       maxAttempts?: number;
+      onProgress?: (progress: string, assets?: { equations: number; tables: number; figures: number }) => void;
     },
   ): Promise<IndexingStatus['status']> => {
     const url = `${API_BASE_URL}/api/pdf/indexing-status/${sessionId}/${encodeURIComponent(fileName)}`;
@@ -149,13 +152,15 @@ export const uploadApi = {
       await sleep(intervalMs);
       try {
         const res = await axios.get<IndexingStatus>(url, { signal, timeout: 15_000 });
+        if (res.data.progress && onProgress) {
+          onProgress(res.data.progress, res.data.assets);
+        }
         if (res.data.status === 'ready') return 'ready';
         if (res.data.status === 'error') return 'error';
       } catch (err) {
         if (axios.isCancel(err) || (err as DOMException)?.name === 'AbortError') throw err;
-        // transient poll failure — keep trying
       }
     }
-    return 'ready'; // text extraction is almost certainly done by now
+    return 'ready';
   },
 };

@@ -151,12 +151,16 @@ class PDFAgent:
             )
 
             # Return structured dict — frontend handles rendering
-            return {
+            response = {
                 "answer": result.get("answer", ""),
                 "equations": result.get("equations", []),
                 "tables": result.get("tables", []),
                 "sources": result.get("sources", []),
             }
+            # Preserve mode so chat_agent can detect "pending" (Stage 2 still running)
+            if result.get("mode"):
+                response["mode"] = result["mode"]
+            return response
             
         except Exception as e:
             return {

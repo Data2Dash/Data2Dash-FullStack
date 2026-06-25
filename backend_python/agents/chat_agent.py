@@ -198,6 +198,16 @@ Begin!\
                     if isinstance(retrieved, str):
                         retrieved = {"answer": retrieved, "equations": [], "tables": [], "sources": []}
 
+                    # 2b. If Stage 2 is still running, return the pending message directly
+                    #     without passing it through the LLM (which would rephrase it)
+                    if retrieved.get("mode") == "pending":
+                        return {
+                            "response": retrieved["answer"],
+                            "equations": [],
+                            "tables": [],
+                            "sources": [],
+                        }
+
                     # 3. Use LLM to compose a well-formatted, grounded answer
                     formatted_answer = self._answer_from_document(query, retrieved, history)
 

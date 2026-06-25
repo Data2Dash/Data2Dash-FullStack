@@ -19,6 +19,7 @@ import { workspaceApi, WorkspaceSummary } from './api/workspaceApi';
 import { useChatStore } from './store/useChatStore';
 import { useUIStore } from './store/useUIStore';
 import { PanelLeftOpen } from 'lucide-react';
+import { SettingsModal } from './components/ui/SettingsModal';
 
 function TabContainer() {
   const location = useLocation();
@@ -93,6 +94,7 @@ function App() {
       </Routes>
       {/* Toasts render above everything including modals */}
       <ToastContainer />
+      <SettingsModal />
     </Router>
   );
 }

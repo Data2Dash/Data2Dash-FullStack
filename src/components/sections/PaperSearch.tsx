@@ -13,6 +13,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/useChatStore';
 import { workspaceApi } from '../../api/workspaceApi';
 import { notify } from '../../store/useUIStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -1416,12 +1417,15 @@ export function PaperSearch() {
               const sid = paperSessionId.current;
               if (pdfFileName) {
                 // PDF is fully indexed — route through chat agent for grounded, well-formatted answers
-                const resp = await fetch(`${API_URL}/api/pdf/chat`, {
-                  method: 'POST',
-                  headers: {
+                const chatHeaders: Record<string, string> = {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
-                  },
+                  };
+                const userGroqKey = useSettingsStore.getState().groqApiKey;
+                if (userGroqKey) chatHeaders['x-groq-api-key'] = userGroqKey;
+                const resp = await fetch(`${API_URL}/api/pdf/chat`, {
+                  method: 'POST',
+                  headers: chatHeaders,
                   body: JSON.stringify({ query: message, session_id: sid }),
                 });
                 const data = await resp.json();

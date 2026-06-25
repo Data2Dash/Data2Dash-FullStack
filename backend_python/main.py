@@ -20,7 +20,7 @@ import json
 import subprocess
 import base64
 from typing import List, Optional, Dict
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
@@ -228,8 +228,11 @@ def get_youtube_agent():
 
 chat_agent = None
 
-def get_chat_agent():
+def get_chat_agent(groq_api_key_override: str = None):
     global chat_agent
+    # If user provided their own key, create a fresh agent with it
+    if groq_api_key_override:
+        return ChatAgent(groq_api_key=groq_api_key_override)
     if chat_agent is None:
         if not GROQ_API_KEY:
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured for chat")
@@ -355,6 +358,35 @@ class QuizRequest(BaseModel):
     filename: str
     num_questions: int = 5
     difficulty: str = "Medium"  # Easy, Medium, Hard
+
+# ─── User API Key Support ─────────────────────────────────────────────────────
+
+class ValidateKeyRequest(BaseModel):
+    api_key: str
+
+def get_user_groq_key(request) -> Optional[str]:
+    """Extract user-provided Groq API key from X-Groq-Api-Key header."""
+    key = request.headers.get("x-groq-api-key", "").strip()
+    return key if key else None
+
+def effective_groq_key(request) -> str:
+    """Return user key if provided, otherwise fall back to server .env key."""
+    return get_user_groq_key(request) or GROQ_API_KEY or ""
+
+@app.post("/api/settings/validate-key")
+async def validate_groq_key(req: ValidateKeyRequest):
+    """Validate a Groq API key by making a minimal test call."""
+    try:
+        from groq import Groq
+        client = Groq(api_key=req.api_key)
+        client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1,
+        )
+        return {"valid": True}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid API key")
 
 # Endpoints
 
@@ -600,7 +632,7 @@ DOCUMENT_CACHE_DIR = os.path.join("data", "document_cache")
 os.makedirs(DOCUMENT_CACHE_DIR, exist_ok=True)
 
 # Global pipeline budget (seconds) — circuit breaker
-PIPELINE_BUDGET_SECONDS = 60
+PIPELINE_BUDGET_SECONDS = 180
 
 
 def _get_cache_path(file_hash: str) -> str:
@@ -825,6 +857,18 @@ async def get_indexing_status(session_id: str, file_name: str):
     with _indexing_lock:
         status = indexing_status.get(task_key)
     if status is not None:
+        # Enrich with Stage 2 progress details if available
+        agent = get_pdf_agent()
+        if session_id in agent.systems:
+            asset_status = agent.systems[session_id].get_asset_status()
+            status = {**status}
+            if asset_status.get("progress"):
+                status["progress"] = asset_status["progress"]
+            status["assets"] = {
+                "equations": asset_status.get("equations", 0),
+                "tables": asset_status.get("tables", 0),
+                "figures": asset_status.get("figures", 0),
+            }
         return status
 
     # No in-memory entry — recover from disk so the spinner never hangs forever
@@ -1034,10 +1078,16 @@ async def upload_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File write failed: {str(e)}")
 
-    # Quick hash check — if already fully indexed, return immediately
+    # Quick hash check — if already fully indexed, load from cache into memory
     try:
         fhash = _file_content_hash(file_path)
         if _index_registry.is_analysis_complete(fhash):
+            # Ensure the system is loaded into memory for this session
+            if session_id not in agent.systems:
+                cache_path = _get_cache_path(fhash)
+                if os.path.exists(cache_path):
+                    system = agent.get_system(session_id)
+                    _load_document_cache(fhash, system)
             file_url = f"{BACKEND_URL}/api/uploads/{session_id}/{file.filename}"
             return JSONResponse(status_code=200, content={
                 "message": "File already indexed.",
@@ -1099,14 +1149,35 @@ async def upload_pdf(
 @app.post("/api/pdf/chat")
 def chat_pdf(
     request: PDFChatRequest,
+    raw_request: Request = None,
     db: Session = Depends(get_db),
     credentials = Depends(bearer_scheme),
 ):
     pdf_ag   = get_pdf_agent()
-    chat_ag  = get_chat_agent()
+    # Use user-provided Groq key if available, for the chat LLM call
+    user_key = raw_request.headers.get("x-groq-api-key", "").strip() if raw_request else ""
+    chat_ag  = get_chat_agent(groq_api_key_override=user_key or None)
     try:
         # Use the session_id as-is for the agent (it's an in-memory key).
         agent_sid = request.session_id
+
+        # Safety net: if session not in memory, try to recover from cache
+        if agent_sid not in pdf_ag.systems:
+            upload_dir = os.path.join("data", "uploads", agent_sid)
+            if os.path.isdir(upload_dir):
+                for fname in os.listdir(upload_dir):
+                    if fname.lower().endswith(".pdf"):
+                        fpath = os.path.join(upload_dir, fname)
+                        try:
+                            fhash = _file_content_hash(fpath)
+                            cache_path = _get_cache_path(fhash)
+                            if os.path.exists(cache_path):
+                                system = pdf_ag.get_system(agent_sid)
+                                _load_document_cache(fhash, system)
+                                print(f"[CHAT] Recovered session {agent_sid} from cache")
+                                break
+                        except Exception:
+                            pass
         try:
             db_sid = str(uuid.UUID(request.session_id))
         except (ValueError, AttributeError):
@@ -1445,7 +1516,7 @@ def compare_papers(request: CompareRequest):
                 pdf_path_b,
                 output_path,
                 os.getenv("GROQ_API_KEY", ""),
-                "gemma2-9b-it"
+                "llama-3.3-70b-versatile"
             ]
             
             proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -1615,8 +1686,21 @@ async def import_paper(
             try:
                 system_bg = pdf_agent_inst.get_system(sid)
                 system_bg.process_document_assets()
+                # Save to cache for instant reload on future imports
+                try:
+                    fhash = _file_content_hash(fp)
+                    _save_document_cache(fhash, system_bg)
+                    _index_registry.mark_analysis_complete(fhash)
+                except Exception:
+                    pass
             except Exception as exc:
                 print(f"[IMPORT-BG] asset extraction failed (non-fatal): {exc}")
+                try:
+                    system_bg = pdf_agent_inst.get_system(sid)
+                    system_bg._stage2_complete = True
+                    system_bg._stage2_error = str(exc)
+                except Exception:
+                    pass
 
         import threading
         threading.Thread(

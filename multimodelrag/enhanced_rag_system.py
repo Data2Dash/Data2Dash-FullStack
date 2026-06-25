@@ -80,6 +80,8 @@ class EnhancedRAGSystem:
 
         self.client = None
         self.vision_client = None
+        self._response_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_max_size = 100
         self._init_groq_clients()
 
     # ------------------------------------------------------------------
@@ -275,6 +277,7 @@ class EnhancedRAGSystem:
         from multimodal_models import ProcessedEquation, ProcessedTable, ProcessedFigure
 
         t_total = _time.perf_counter()
+        self._stage2_progress = "starting asset extraction"
 
         pdf_path = getattr(self, "_stage2_pdf_path", None)
         if not pdf_path or not self.current_document:
@@ -285,6 +288,7 @@ class EnhancedRAGSystem:
         table_pages = getattr(self, "_stage2_table_pages", None)
 
         # ── Asset extraction (tables + equations + figures) ──
+        self._stage2_progress = "extracting tables, equations & figures"
         t0 = _time.perf_counter()
         try:
             assets = self.pdf_processor.extract_assets_targeted(pdf_path, table_pages)
@@ -298,6 +302,7 @@ class EnhancedRAGSystem:
         eq_count = len(assets.get("equations", []))
         tbl_count = len(assets.get("tables", []))
         fig_count = len(assets.get("figures", []))
+        self._stage2_progress = f"found {eq_count} equations, {tbl_count} tables, {fig_count} figures — indexing"
         print(f"[TIMING] Asset extraction: {_time.perf_counter() - t0:.2f}s "
               f"({eq_count} eq, {tbl_count} tbl, {fig_count} fig)")
 
@@ -387,7 +392,7 @@ class EnhancedRAGSystem:
         started_at = getattr(self, "_stage2_started_at", None)
 
         elapsed = (_time.time() - started_at) if started_at else 0
-        timed_out = not stage2_complete and elapsed > 90
+        timed_out = not stage2_complete and elapsed > 180
 
         return {
             "stage2_complete": stage2_complete or timed_out,
@@ -398,6 +403,10 @@ class EnhancedRAGSystem:
             ) if self.current_document else 0,
             "error": stage2_error or ("Asset extraction timed out" if timed_out else None),
             "elapsed_seconds": round(elapsed, 1),
+            "progress": getattr(self, "_stage2_progress", ""),
+            "equations": len(self.current_document.equations) if self.current_document else 0,
+            "tables": len(self.current_document.tables) if self.current_document else 0,
+            "figures": len(self.current_document.figures) if self.current_document else 0,
         }
 
     # ------------------------------------------------------------------
@@ -691,6 +700,13 @@ class EnhancedRAGSystem:
     # Core query logic
     # ------------------------------------------------------------------
 
+    def _make_cache_key(self, query: str, mode: str) -> str:
+        import hashlib
+        doc_id = self.current_doc_id or ""
+        stage2 = "1" if getattr(self, "_stage2_complete", False) else "0"
+        raw = f"{doc_id}|{stage2}|{mode}|{query.strip().lower()}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
     def _query_impl(
         self,
         user_query: str,
@@ -710,6 +726,12 @@ class EnhancedRAGSystem:
 
         q = (user_query or "").strip()
         ql = q.lower()
+
+        # ── Response cache check ──
+        cache_key = self._make_cache_key(q, mode)
+        if cache_key in self._response_cache:
+            logger.debug("Cache HIT for query: %s", q[:50])
+            return self._response_cache[cache_key]
 
         meta_answer = self._answer_from_metadata_if_possible(ql)
         if meta_answer is not None:
@@ -732,7 +754,7 @@ class EnhancedRAGSystem:
         stage2_timed_out = (
             not stage2_complete
             and stage2_started is not None
-            and (_time.time() - stage2_started) > 90
+            and (_time.time() - stage2_started) > 180
         )
 
         is_asset_query = any(k in ql for k in [
@@ -740,11 +762,13 @@ class EnhancedRAGSystem:
             "score", "result", "performance", "architecture",
         ])
 
-        # Only block if Stage 2 is genuinely still running (not timed out, not errored)
-        if is_asset_query and not stage2_complete and not stage2_timed_out:
+        # Block ALL queries while Stage 2 is running to prevent hallucination.
+        # The LLM only has raw text without tables/equations/figures until Stage 2
+        # finishes, so even general queries can produce fabricated content.
+        if not stage2_complete and not stage2_timed_out:
             elapsed = round(_time.time() - stage2_started, 0) if stage2_started else 0
             return {
-                "answer": f"Asset extraction is still in progress ({int(elapsed)}s elapsed). Tables, equations, and figures will be available shortly. Please try again in a few seconds.",
+                "answer": f"The document is still being fully indexed ({int(elapsed)}s elapsed). Tables, equations, and figures are being extracted. Please try again in a few seconds.",
                 "sources": [],
                 "equations": [],
                 "tables": [],
@@ -862,7 +886,7 @@ class EnhancedRAGSystem:
 
         # (Equation LaTeX guard runs at the END of _finalize_response, after the
         #  formatter — otherwise leak-removal strips the injected LaTeX content.)
-        return self._finalize_response(
+        result = self._finalize_response(
             query=q,
             answer_text=answer_text,
             retrieved=retrieved,
@@ -872,6 +896,15 @@ class EnhancedRAGSystem:
             mode=mode,
             include_sources=include_sources,
         )
+
+        # ── Cache the response (skip pending/error responses) ──
+        if result.get("mode") != "pending" and result.get("answer"):
+            if len(self._response_cache) >= self._cache_max_size:
+                oldest = next(iter(self._response_cache))
+                del self._response_cache[oldest]
+            self._response_cache[cache_key] = result
+
+        return result
 
     @staticmethod
     def _normalize_latex(latex: str) -> str:

@@ -560,31 +560,138 @@ class TableDetector:
     def extract_table_markdown(plumber_page, fitz_page, config: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         tables = []
         try:
+            page_width = fitz_page.rect.width
+            page_height = fitz_page.rect.height
+
+            # ── Collect all captions on this page ──
             table_captions = []
             blocks = fitz_page.get_text("blocks")
             for b in blocks:
                 if b[6] == 0:
                     text = b[4].strip()
-                    if re.match(r'^Table\s+\d+[:\.]', text, re.IGNORECASE) and len(text.split()) < 40:
+                    if re.match(r'^Table\s+(\d+|[IVXLC]+)\b', text, re.IGNORECASE) and len(text.split()) < 40:
                         table_captions.append({"text": text.replace('\n', ' '), "bbox": b[:4]})
 
-            if not table_captions:
-                return tables
-
-            page_width = fitz_page.rect.width
-            page_height = fitz_page.rect.height
-
+            # ── Detect native tables via pdfplumber (structure-based, caption-independent) ──
             try:
                 native_tables = plumber_page.find_tables()
             except Exception:
                 native_tables = []
 
+            used_native_indices = set()
+
+            def _count_md_cols(md: str) -> int:
+                mx = 0
+                for _ln in md.splitlines():
+                    if _ln.strip().startswith("|") and "---" not in _ln:
+                        cells = [c.strip() for c in _ln.strip().strip("|").split("|") if c.strip()]
+                        mx = max(mx, len(cells))
+                return mx
+
+            def _count_md_data_rows(md: str) -> int:
+                return len([ln for ln in md.splitlines()
+                            if ln.strip().startswith("|") and "---" not in ln])
+
+            def _find_caption_for_bbox(bbox) -> str:
+                """Find the nearest caption above or below a table bbox."""
+                tb_top, tb_bottom = bbox[1], bbox[3]
+                best_cap = ""
+                best_dist = 9999
+                for cap in table_captions:
+                    cy0, cy1 = cap["bbox"][1], cap["bbox"][3]
+                    # Caption above table
+                    dist_above = tb_top - cy1
+                    if 0 <= dist_above < best_dist:
+                        best_dist = dist_above
+                        best_cap = cap["text"]
+                    # Caption below table
+                    dist_below = cy0 - tb_bottom
+                    if 0 <= dist_below < best_dist:
+                        best_dist = dist_below
+                        best_cap = cap["text"]
+                return best_cap
+
+            def _enhance_with_vision(md_text, crop_box, caption):
+                """Try vision extraction if native result is poor quality."""
+                if not config or not config.get("groq_api_key"):
+                    return md_text, crop_box
+
+                data_rows = _count_md_data_rows(md_text)
+                cols = _count_md_cols(md_text)
+
+                # Already good enough
+                if data_rows >= 3 and cols >= 2:
+                    return md_text, crop_box
+
+                # Try vision on the same crop
+                vision_md = TableDetector._extract_table_with_vision(
+                    fitz_page, crop_box, config["groq_api_key"])
+                if vision_md and TableDetector._vision_table_has_labels(vision_md):
+                    v_rows = _count_md_data_rows(vision_md)
+                    v_cols = _count_md_cols(vision_md)
+                    if v_rows > data_rows or v_cols > cols:
+                        print(f"[TABLE] Vision improved: {data_rows}→{v_rows} rows, {cols}→{v_cols} cols")
+                        return vision_md, crop_box
+
+                # Try full-page vision for large tables
+                if data_rows <= 3:
+                    full_box = (0, 20, page_width, page_height - 20)
+                    fp_md = TableDetector._extract_table_with_vision(
+                        fitz_page, full_box, config["groq_api_key"])
+                    if fp_md and _count_md_data_rows(fp_md) > data_rows:
+                        print(f"[TABLE] Full-page vision got {_count_md_data_rows(fp_md)} rows (was {data_rows})")
+                        return fp_md, full_box
+
+                return md_text, crop_box
+
+            # ══════════════════════════════════════════════════════════════
+            # STRATEGY 1: pdfplumber native table detection (structure-based)
+            # This finds tables by borders/lines/cell patterns — no caption needed
+            # ══════════════════════════════════════════════════════════════
+            for nt_idx, nt in enumerate(native_tables):
+                try:
+                    rows = nt.extract()
+                    md_body = TableDetector._cells_to_markdown(rows)
+                    if not md_body or _count_md_cols(md_body) < 2:
+                        continue
+
+                    crop_box = (nt.bbox[0], nt.bbox[1], nt.bbox[2], nt.bbox[3])
+                    caption = _find_caption_for_bbox(nt.bbox)
+
+                    md_body, crop_box = _enhance_with_vision(md_body, crop_box, caption)
+                    md_body = TableDetector._strip_prose_rows_from_markdown(md_body, caption)
+
+                    plain = re.sub(r'[|`\-]+', ' ', md_body)
+                    plain = re.sub(r'\s+', ' ', plain).strip()
+
+                    tables.append({
+                        "markdown": md_body,
+                        "bbox": crop_box,
+                        "caption": caption,
+                        "text": plain,
+                    })
+                    used_native_indices.add(nt_idx)
+                    print(f"[TABLE] Strategy 1 (native): found table with {_count_md_data_rows(md_body)} rows, caption='{caption[:50]}'")
+                except Exception as e:
+                    logger.debug(f"Native table {nt_idx} extraction failed: {e}")
+
+            # ══════════════════════════════════════════════════════════════
+            # STRATEGY 2: Caption-based search with vision model
+            # For tables not detected by pdfplumber (borderless, checkmark tables, etc.)
+            # ══════════════════════════════════════════════════════════════
             for cap in table_captions:
+                # Skip captions already matched to a native table
+                cap_already_used = any(
+                    cap["text"] == t["caption"] for t in tables
+                )
+                if cap_already_used:
+                    continue
+
                 cx0, cy0, cx1, cy1 = cap["bbox"]
 
                 is_left = cx1 < (page_width / 2) + 20
                 is_right = cx0 > (page_width / 2) - 20
-                spans_full = not is_left and not is_right  # caption spans both columns
+                spans_full = not is_left and not is_right
                 if spans_full or (is_left and is_right):
                     crop_x0, crop_x1 = 0, page_width
                 elif is_left:
@@ -592,132 +699,58 @@ class TableDetector:
                 else:
                     crop_x0, crop_x1 = (page_width / 2), page_width
 
-                search_box = (crop_x0, cy1, crop_x1, min(page_height, cy1 + 560))
-
-                matched_native = None
-                for nt in native_tables:
-                    tb = nt.bbox
-                    if (
-                        tb[0] < search_box[2] and tb[2] > search_box[0] and
-                        tb[1] < search_box[3] and tb[3] > search_box[1]
-                    ):
-                        matched_native = nt
-                        break
-
                 md_text = ""
-                crop_box = (crop_x0, max(0, cy1 - 2), crop_x1, min(page_height, cy1 + 560))
+                crop_box = None
 
+                # Try BELOW caption first
+                below_box = (crop_x0, max(0, cy1 - 2), crop_x1, min(page_height, cy1 + 800))
                 if config and config.get("groq_api_key"):
-                    vision_md = TableDetector._extract_table_with_vision(fitz_page, crop_box, config.get("groq_api_key"))
-                    if vision_md and TableDetector._vision_table_has_labels(vision_md):
-                        md_text = vision_md
-                    elif vision_md:
-                        print(f"[TABLE] Vision rejected (labels/cols check failed), retrying wider crop")
-                        wider_box = (0, max(0, cy1 - 2), page_width, min(page_height, cy1 + 560))
-                        retry_md = TableDetector._extract_table_with_vision_retry(fitz_page, wider_box, config.get("groq_api_key"))
-                        if retry_md and TableDetector._vision_table_has_labels(retry_md):
-                            md_text = retry_md
-                            crop_box = wider_box
-                            print(f"[TABLE] Vision retry succeeded with wider crop")
-                        else:
-                            print(f"[TABLE] Vision retry also failed — using fallbacks")
+                    md_text = TableDetector._extract_table_with_vision(
+                        fitz_page, below_box, config["groq_api_key"])
+                    if md_text and TableDetector._vision_table_has_labels(md_text):
+                        crop_box = below_box
+                        print(f"[TABLE] Strategy 2 (caption+vision below): '{cap['text'][:40]}'")
+                if not md_text:
+                    md_body = TableDetector._fitz_blocks_to_markdown(fitz_page, below_box)
+                    if md_body and _count_md_cols(md_body) >= 2:
+                        md_text = md_body
+                        crop_box = below_box
 
-                if not md_text and matched_native is not None:
-                    try:
-                        rows = matched_native.extract()
-                        md_body = TableDetector._cells_to_markdown(rows)
-                        if md_body:
+                # Try ABOVE caption (caption-below-table layout)
+                if not md_text and cy0 > 50:
+                    above_box = (crop_x0, max(0, cy0 - 800), crop_x1, cy0 + 2)
+                    print(f"[TABLE] Nothing below caption '{cap['text'][:40]}…', trying ABOVE")
+                    if config and config.get("groq_api_key"):
+                        md_text = TableDetector._extract_table_with_vision(
+                            fitz_page, above_box, config["groq_api_key"])
+                        if md_text and TableDetector._vision_table_has_labels(md_text):
+                            crop_box = above_box
+                            print(f"[TABLE] Found table ABOVE caption (caption-below layout)")
+                    if not md_text:
+                        md_body = TableDetector._fitz_blocks_to_markdown(fitz_page, above_box)
+                        if md_body and _count_md_cols(md_body) >= 2:
                             md_text = md_body
-                            crop_box = (
-                                matched_native.bbox[0],
-                                matched_native.bbox[1],
-                                matched_native.bbox[2],
-                                matched_native.bbox[3],
-                            )
-                    except Exception as e:
-                        logger.debug(f"Native table extraction failed, falling back: {e}")
+                            crop_box = above_box
 
-                # Fast path: PyMuPDF block-based extraction (no pdfplumber overhead)
-                if not md_text:
-                    try:
-                        md_body = TableDetector._fitz_blocks_to_markdown(fitz_page, crop_box)
-                        if md_body:
-                            md_text = md_body
-                    except Exception as ef:
-                        logger.debug(f"PyMuPDF fast extraction failed: {ef}")
-
-                # Slow fallback: pdfplumber word extraction (only if fitz failed)
-                if not md_text:
-                    try:
-                        cropped_b = plumber_page.within_bbox(crop_box)
-                        words = cropped_b.extract_words(
-                            x_tolerance=4,
-                            y_tolerance=4,
-                            keep_blank_chars=False,
-                            use_text_flow=False,
-                        )
-                        if words:
-                            md_body = TableDetector._words_to_markdown(words)
-                            if md_body:
-                                md_text = md_body
-                    except Exception as eb:
-                        logger.debug(f"Word-cluster extraction failed: {eb}")
-
-                if not md_text:
-                    try:
-                        cropped_c = plumber_page.within_bbox(crop_box)
-                        raw_text = cropped_c.extract_text(layout=True)
-                        if raw_text and len(raw_text.strip()) >= 15:
-                            md_text = TableDetector._layout_text_to_markdown(raw_text)
-                    except Exception as ec:
-                        logger.debug(f"Layout fallback failed: {ec}")
+                # Try full-page as last resort
+                if not md_text and config and config.get("groq_api_key"):
+                    full_box = (0, 20, page_width, page_height - 20)
+                    print(f"[TABLE] Trying full-page vision for '{cap['text'][:40]}'")
+                    md_text = TableDetector._extract_table_with_vision(
+                        fitz_page, full_box, config["groq_api_key"])
+                    if md_text and TableDetector._vision_table_has_labels(md_text):
+                        crop_box = full_box
 
                 if not md_text:
                     continue
 
-                # If result has very few columns and crop was half-page, retry full-width
-                def _count_md_cols(md: str) -> int:
-                    mx = 0
-                    for _ln in md.splitlines():
-                        if _ln.strip().startswith("|") and "---" not in _ln:
-                            cells = [c.strip() for c in _ln.strip().strip("|").split("|") if c.strip()]
-                            mx = max(mx, len(cells))
-                    return mx
-
-                md_cols = _count_md_cols(md_text)
-                is_half_page = (crop_x1 - crop_x0) < page_width * 0.8
-                if md_cols <= 1 and is_half_page:
-                    full_box = (0, max(0, cy1 - 2), page_width, min(page_height, cy1 + 560))
-                    print(f"[TABLE] Single-column ({md_cols} cols), retrying full-width crop")
-                    improved = False
-                    if config and config.get("groq_api_key"):
-                        retry_md = TableDetector._extract_table_with_vision_retry(fitz_page, full_box, config.get("groq_api_key"))
-                        if retry_md and _count_md_cols(retry_md) > md_cols:
-                            md_text = retry_md
-                            crop_box = full_box
-                            md_cols = _count_md_cols(md_text)
-                            improved = True
-                            print(f"[TABLE] Full-width vision got {md_cols} cols")
-                    if not improved:
-                        try:
-                            fw_body = TableDetector._fitz_blocks_to_markdown(fitz_page, full_box)
-                            if fw_body and _count_md_cols(fw_body) > md_cols:
-                                md_text = fw_body
-                                crop_box = full_box
-                                print(f"[TABLE] Full-width fitz got {_count_md_cols(fw_body)} cols")
-                        except Exception:
-                            pass
-
-                # Post-process: remove rows that are prose (sentences bleeding in
-                # from outside the table) or that repeat the caption text
                 md_text = TableDetector._strip_prose_rows_from_markdown(md_text, cap["text"])
-
                 plain = re.sub(r'[|`\-]+', ' ', md_text)
                 plain = re.sub(r'\s+', ' ', plain).strip()
 
                 tables.append({
                     "markdown": md_text,
-                    "bbox": crop_box,
+                    "bbox": crop_box or below_box,
                     "caption": cap["text"],
                     "text": plain,
                 })
@@ -1099,7 +1132,7 @@ class EnhancedPDFProcessor:
             text = page.get_text("text")
             page_texts.append(text)
             # Heuristic: mark pages that likely contain tables
-            if re.search(r'Table\s+\d+[:\.]', text, re.IGNORECASE):
+            if re.search(r'TABLE?\s+(\d+|[IVXLC]+)\b', text, re.IGNORECASE):
                 table_pages.append(page_num)
 
         num_pages = len(doc)
@@ -1127,7 +1160,9 @@ class EnhancedPDFProcessor:
         os.makedirs(fig_dir, exist_ok=True)
 
         all_pages = range(len(doc))
-        pages_for_tables = set(table_pages) if table_pages else set(all_pages)
+        # Run table extraction on ALL pages — pdfplumber.find_tables() is fast
+        # and can detect tables structurally even without caption text on the page
+        pages_for_tables = set(all_pages)
 
         for page_num in all_pages:
             page = doc[page_num]

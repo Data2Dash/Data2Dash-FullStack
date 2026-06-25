@@ -12,6 +12,7 @@ import { notify } from '../../store/useUIStore';
 import { generateVideo, pollVideoStatus, getVideoDownloadUrl, VIDEO_VOICES, type VideoVoiceId, type VideoStatusResponse } from '../../api/videoService';
 
 import { clsx } from 'clsx';
+import { exportAsText, exportAsMarkdown, exportAsHTML, exportAsPDF, exportAsWord } from '../../utils/exportChat';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -1339,6 +1340,20 @@ export function PaperInteractionPanel({
               </div>
               <div className="flex-none px-4 py-3 border-t border-stone-100 bg-white flex gap-2">
                 <Input placeholder="Ask a question…" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} disabled={isLoading} className="rounded-xl text-sm" />
+                {messages.length > 1 && (
+                  <div className="relative group">
+                    <button className="h-10 w-10 shrink-0 rounded-xl border border-stone-200 text-stone-500 flex items-center justify-center hover:bg-stone-50 transition-colors" title="Export chat">
+                      <Download className="h-4 w-4" />
+                    </button>
+                    <div className="absolute bottom-full right-0 mb-1 hidden group-hover:block bg-white border border-stone-200 rounded-xl shadow-lg p-1 z-50 min-w-[120px]">
+                      <button onClick={() => exportAsPDF(messages, title)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 rounded-lg">.pdf (PDF)</button>
+                      <button onClick={() => exportAsWord(messages, title)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 rounded-lg">.doc (Word)</button>
+                      <button onClick={() => exportAsMarkdown(messages, title)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 rounded-lg">.md (Markdown)</button>
+                      <button onClick={() => exportAsHTML(messages, title)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 rounded-lg">.html (Web)</button>
+                      <button onClick={() => exportAsText(messages, title)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 rounded-lg">.txt (Plain text)</button>
+                    </div>
+                  </div>
+                )}
                 <button onClick={handleSend} disabled={isLoading || !inputValue.trim()} className="h-10 w-10 shrink-0 rounded-xl bg-stone-900 text-white flex items-center justify-center hover:bg-stone-700 disabled:opacity-40 transition-colors"><Send className="h-4 w-4" /></button>
               </div>
             </div>

@@ -213,7 +213,7 @@ def render_app() -> None:
             [
                 "llama-3.3-70b-versatile",
                 "llama-3.1-8b-instant",
-                "gemma2-9b-it",
+                "qwen/qwen3-32b",
             ],
             help="Choose a Groq model for the extraction and analysis steps.",
         )

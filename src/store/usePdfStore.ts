@@ -13,6 +13,8 @@ export interface PdfFile {
   progress?: number;
   /** Human-readable failure reason when status === 'error'. */
   error?: string;
+  /** Detailed progress text from Stage 2 asset extraction. */
+  progressText?: string;
   url?: string;
   sessionId: string;
 }

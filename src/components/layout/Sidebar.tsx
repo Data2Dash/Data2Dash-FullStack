@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import {
   MessageSquare, Search, Upload, BookMarked, Home,
-  Plus, FileText, Clock, Zap, FolderOpen, LogOut, Sparkles, Trash2
+  Plus, FileText, Clock, Zap, FolderOpen, LogOut, Sparkles, Trash2, Settings
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -14,6 +14,7 @@ import { useChatStore } from '../../store/useChatStore';
 import { useUIStore } from '../../store/useUIStore';
 import { useSearchStore } from '../../store/useSearchStore';
 import { usePdfStore } from '../../store/usePdfStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { PanelLeftClose } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -30,6 +31,7 @@ export function Sidebar({ summary }: SidebarProps) {
   const { isSidebarOpen, toggleSidebar } = useUIStore();
   const { sessions: searchSessions, activeSessionId: activeSearchId, newSearch, loadSession } = useSearchStore();
   const pdfStore = usePdfStore();
+  const openSettings = useSettingsStore(s => s.openSettings);
   
   const location = useLocation();
   const navigate = useNavigate();
@@ -519,6 +521,13 @@ export function Sidebar({ summary }: SidebarProps) {
 
         {isUserMenuOpen && (
           <div className="absolute bottom-full left-3 right-3 mb-2 bg-white border border-stone-200 rounded-xl shadow-panel p-1 z-50">
+            <button
+              onClick={() => { setIsUserMenuOpen(false); openSettings(); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-stone-700 hover:bg-stone-100 transition-colors rounded-lg font-medium"
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </button>
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors rounded-lg font-medium"

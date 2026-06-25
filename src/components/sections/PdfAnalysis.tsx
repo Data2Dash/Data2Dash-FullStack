@@ -11,6 +11,7 @@ import { useChatStore } from '../../store/useChatStore';
 import { usePdfStore, PdfFile } from '../../store/usePdfStore';
 import { uploadApi, validateFile, ACCEPT_ATTR, MAX_FILE_SIZE_MB } from '../../api/uploadApi';
 import { notify } from '../../store/useUIStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import axios from 'axios';
 
 /** True when an error is a user-initiated cancellation rather than a real failure. */
@@ -339,6 +340,13 @@ export function PdfAnalysis() {
           sessionId: entry.sessionId,
           fileName: file.name,
           signal: ac.signal,
+          onProgress: (progress, assets) => {
+            const parts = [progress];
+            if (assets && (assets.equations || assets.tables || assets.figures)) {
+              parts.push(`(${assets.tables} tables, ${assets.equations} eq, ${assets.figures} fig)`);
+            }
+            updateFile(entry.id, { progressText: parts.join(' ') });
+          },
         });
         if (result === 'error') {
           updateFile(entry.id, { status: 'error', error: 'Indexing failed — the file may be corrupted or protected.' });
@@ -475,7 +483,7 @@ export function PdfAnalysis() {
               currentFile?.status === 'uploading'
                 ? `Uploading… ${currentFile.progress ?? 0}%`
                 : currentFile?.status === 'indexing'
-                ? 'Indexing for chat…'
+                ? (currentFile.progressText || 'Indexing for chat…')
                 : currentFile?.status === 'error'
                 ? (currentFile.error ?? 'Upload failed')
                 : currentFile
@@ -503,7 +511,7 @@ export function PdfAnalysis() {
                     <span className="text-amber-800 font-semibold text-sm">
                       {currentFile.status === 'uploading'
                         ? <>Uploading <strong>{currentFile.name}</strong>… {currentFile.progress ?? 0}%</>
-                        : <>Indexing <strong>{currentFile.name}</strong> for chat…</>}
+                        : <>{currentFile.progressText || <>Indexing <strong>{currentFile.name}</strong> for chat…</>}</>}
                     </span>
                   </div>
                 ) : (
@@ -527,6 +535,8 @@ export function PdfAnalysis() {
               if (!currentFile) return { response: '⚠️ No document selected.' };
               const headers: Record<string, string> = { 'Content-Type': 'application/json' };
               if (token) headers['Authorization'] = `Bearer ${token}`;
+              const userGroqKey = useSettingsStore.getState().groqApiKey;
+              if (userGroqKey) headers['x-groq-api-key'] = userGroqKey;
               const res = await fetch(`${API_URL}/api/pdf/chat`, {
                 method: 'POST',
                 headers,
