@@ -61,9 +61,9 @@ export function TopBar() {
   }, []);
 
   return (
-    <header className="h-12 shrink-0 flex items-center justify-between px-5 border-b border-stone-200 bg-white/80 backdrop-blur-sm z-40">
+    <header className="h-12 shrink-0 flex items-center justify-between px-5 border-b border-stone-200 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/85 backdrop-blur-sm z-40">
       {/* Page title */}
-      <span className="text-sm font-semibold text-stone-700 tracking-tight select-none">
+      <span className="text-sm font-semibold text-stone-700 dark:text-zinc-300 tracking-tight select-none">
         {title}
       </span>
 
@@ -74,7 +74,7 @@ export function TopBar() {
         <button
           onClick={toggleDarkMode}
           title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-          className="relative w-9 h-9 flex items-center justify-center rounded-xl text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-all duration-200"
+          className="relative w-9 h-9 flex items-center justify-center rounded-xl text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-100 dark:hover:bg-zinc-700 transition-all duration-200"
         >
           <span className={clsx(
             'absolute inset-0 flex items-center justify-center transition-all duration-300',
@@ -95,7 +95,7 @@ export function TopBar() {
           <button
             onClick={() => setNotifOpen(v => !v)}
             title="Notifications"
-            className="relative w-9 h-9 flex items-center justify-center rounded-xl text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-all duration-200"
+            className="relative w-9 h-9 flex items-center justify-center rounded-xl text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-100 dark:hover:bg-zinc-700 transition-all duration-200"
           >
             <Bell className="h-[18px] w-[18px]" />
             {unread > 0 && (
@@ -107,17 +107,17 @@ export function TopBar() {
 
           {/* ── Notification panel ──────────────────────────────── */}
           {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl border border-stone-200 shadow-xl z-[300] overflow-hidden">
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-xl z-[300] overflow-hidden">
 
               {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 dark:border-zinc-800">
                 <div className="flex items-center gap-2">
-                  <Bell className="h-3.5 w-3.5 text-stone-400" />
-                  <span className="text-xs font-bold text-stone-900 uppercase tracking-wider">
+                  <Bell className="h-3.5 w-3.5 text-stone-400 dark:text-zinc-500" />
+                  <span className="text-xs font-bold text-stone-900 dark:text-zinc-100 uppercase tracking-wider">
                     Notifications
                   </span>
                   {unread > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400 text-[10px] font-bold">
                       {unread} new
                     </span>
                   )}
@@ -127,7 +127,7 @@ export function TopBar() {
                     <button
                       onClick={markAllRead}
                       title="Mark all read"
-                      className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-zinc-700 text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
                     >
                       <CheckCheck className="h-3.5 w-3.5" />
                     </button>
@@ -136,7 +136,7 @@ export function TopBar() {
                     <button
                       onClick={clearAllNotifications}
                       title="Clear all"
-                      className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-red-500 transition-colors"
+                      className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-zinc-700 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-colors"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -145,14 +145,14 @@ export function TopBar() {
               </div>
 
               {/* List */}
-              <div className="max-h-[360px] overflow-y-auto custom-scrollbar divide-y divide-stone-100">
+              <div className="max-h-[360px] overflow-y-auto custom-scrollbar divide-y divide-stone-100 dark:divide-zinc-800">
                 {notifications.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-stone-400">
-                    <div className="w-12 h-12 rounded-2xl bg-stone-100 flex items-center justify-center mb-3">
+                  <div className="flex flex-col items-center justify-center py-12 text-stone-400 dark:text-zinc-500">
+                    <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-zinc-800 flex items-center justify-center mb-3">
                       <Bell className="h-6 w-6 opacity-40" />
                     </div>
-                    <p className="text-xs font-semibold text-stone-500">No notifications yet</p>
-                    <p className="text-[11px] mt-1 text-stone-400">Completed tasks will appear here</p>
+                    <p className="text-xs font-semibold text-stone-500 dark:text-zinc-400">No notifications yet</p>
+                    <p className="text-[11px] mt-1 text-stone-400 dark:text-zinc-500">Completed tasks will appear here</p>
                   </div>
                 ) : (
                   notifications.map(n => (
@@ -161,28 +161,28 @@ export function TopBar() {
                       onClick={() => markRead(n.id)}
                       className={clsx(
                         'group flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-colors',
-                        n.read ? 'hover:bg-stone-50' : 'bg-blue-50/60 hover:bg-blue-50'
+                        n.read ? 'hover:bg-stone-50 dark:hover:bg-zinc-800' : 'bg-blue-50/60 dark:bg-blue-500/10 hover:bg-blue-50 dark:hover:bg-blue-500/15'
                       )}
                     >
                       <div className="mt-0.5 shrink-0">{typeIcon(n.type)}</div>
                       <div className="flex-1 min-w-0">
                         <p className={clsx(
                           'text-xs font-semibold truncate',
-                          n.read ? 'text-stone-500' : 'text-stone-900'
+                          n.read ? 'text-stone-500 dark:text-zinc-400' : 'text-stone-900 dark:text-zinc-100'
                         )}>
                           {n.title}
                         </p>
-                        <p className="text-xs text-stone-500 leading-relaxed mt-0.5 line-clamp-2">
+                        <p className="text-xs text-stone-500 dark:text-zinc-400 leading-relaxed mt-0.5 line-clamp-2">
                           {n.message}
                         </p>
-                        <p className="text-[10px] text-stone-400 mt-1">{timeAgo(n.timestamp)}</p>
+                        <p className="text-[10px] text-stone-400 dark:text-zinc-500 mt-1">{timeAgo(n.timestamp)}</p>
                       </div>
                       {!n.read && (
                         <div className="h-2 w-2 rounded-full bg-blue-500 shrink-0 mt-1.5" />
                       )}
                       <button
                         onClick={e => { e.stopPropagation(); dismissNotification(n.id); }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-stone-200 text-stone-400 shrink-0 ml-1"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-stone-200 dark:hover:bg-zinc-700 text-stone-400 dark:text-zinc-500 shrink-0 ml-1"
                       >
                         <X className="h-3 w-3" />
                       </button>

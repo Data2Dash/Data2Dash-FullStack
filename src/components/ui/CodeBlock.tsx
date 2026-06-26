@@ -30,7 +30,7 @@ function CodeBlock({ className, children }: CodeProps) {
   // ── Inline code  `like this` ──────────────────────────────────────────────
   if (isInline) {
     return (
-      <code className="px-1.5 py-0.5 mx-0.5 rounded-md bg-stone-100 text-stone-800 border border-stone-200 font-mono text-[0.85em] font-semibold break-words">
+      <code className="px-1.5 py-0.5 mx-0.5 rounded-md bg-stone-100 dark:bg-zinc-800 text-stone-800 dark:text-zinc-200 border border-stone-200 dark:border-zinc-700 font-mono text-[0.85em] font-semibold break-words">
         {children}
       </code>
     );
@@ -96,17 +96,17 @@ export const codeComponents = {
   code: (props: any) => <CodeBlock {...props} />,
   // Enhanced Blockquote
   blockquote: (props: any) => (
-    <blockquote className="border-l-4 border-stone-300 pl-4 py-1 my-4 bg-stone-50/80 rounded-r-lg italic text-stone-600" {...props} />
+    <blockquote className="border-l-4 border-stone-300 dark:border-zinc-600 pl-4 py-1 my-4 bg-stone-50/80 dark:bg-zinc-950/80 rounded-r-lg italic text-stone-600 dark:text-zinc-400" {...props} />
   ),
   // Enhanced Table Wrapper for responsiveness
   table: (props: any) => (
-    <div className="overflow-x-auto w-full my-4 rounded-xl border border-stone-200 shadow-sm custom-scrollbar bg-white">
+    <div className="overflow-x-auto w-full my-4 rounded-xl border border-stone-200 dark:border-zinc-700 shadow-sm custom-scrollbar bg-white dark:bg-zinc-900">
       <table className="w-full text-left text-[13px] sm:text-sm border-collapse whitespace-nowrap" {...props} />
     </div>
   ),
-  thead: (props: any) => <thead className="bg-stone-100/80 text-stone-700" {...props} />,
-  th: (props: any) => <th className="px-4 py-2.5 font-semibold border-b border-stone-200" {...props} />,
-  td: (props: any) => <td className="px-4 py-2.5 border-b border-stone-100 text-stone-600 last:border-b-0" {...props} />,
+  thead: (props: any) => <thead className="bg-stone-100/80 dark:bg-zinc-800/80 text-stone-700 dark:text-zinc-300" {...props} />,
+  th: (props: any) => <th className="px-4 py-2.5 font-semibold border-b border-stone-200 dark:border-zinc-700" {...props} />,
+  td: (props: any) => <td className="px-4 py-2.5 border-b border-stone-100 dark:border-zinc-800 text-stone-600 dark:text-zinc-400 last:border-b-0" {...props} />,
   // Math blocks wrapper to prevent overflow
   div: (props: any) => {
     if (props.className && props.className.includes('math-display')) {

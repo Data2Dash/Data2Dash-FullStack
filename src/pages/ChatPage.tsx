@@ -182,7 +182,7 @@ export function ChatPage() {
   };
 
   return (
-    <div className="h-full bg-[#F8FAFC] flex flex-col relative overflow-hidden">
+    <div className="h-full bg-[#F8FAFC] dark:bg-zinc-950 flex flex-col relative overflow-hidden">
       <div 
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto custom-scrollbar p-4 w-full flex flex-col items-center"
@@ -196,12 +196,12 @@ export function ChatPage() {
                 className="text-center mb-10 w-full"
               >
                 <div className="flex items-center justify-center gap-2.5 mb-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-900 text-white shadow-soft">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-soft">
                     <Sparkles className="h-7 w-7" />
                   </div>
-                  <h1 className="text-4xl font-extrabold text-[#1E293B] tracking-tight">Data2Dash AI</h1>
+                  <h1 className="text-4xl font-extrabold text-[#1E293B] dark:text-zinc-100 tracking-tight">Data2Dash AI</h1>
                 </div>
-                <h2 className="text-lg font-semibold text-[#64748B] max-w-md mx-auto">
+                <h2 className="text-lg font-semibold text-[#64748B] dark:text-zinc-400 max-w-md mx-auto">
                   Research assistant for machine learning and academic literature.
                 </h2>
               </motion.div>
@@ -215,9 +215,9 @@ export function ChatPage() {
                   <button
                     key={i}
                     onClick={() => handleSearch(undefined, text)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-white rounded-2xl border border-slate-200 shadow-sm text-sm font-semibold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all active:scale-95"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm text-sm font-semibold text-slate-700 dark:text-zinc-300 hover:border-slate-300 dark:hover:border-zinc-600 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all active:scale-95"
                   >
-                    <MessageCircle className="h-4 w-4 text-slate-400" />
+                    <MessageCircle className="h-4 w-4 text-slate-400 dark:text-zinc-500" />
                     {text}
                   </button>
                 ))}
@@ -238,7 +238,7 @@ export function ChatPage() {
                   >
                     {msg.role === 'ai' && (
                       <div className="flex-shrink-0 mt-1">
-                        <div className="h-9 w-9 rounded-xl bg-stone-900 flex items-center justify-center text-white shadow-soft">
+                        <div className="h-9 w-9 rounded-xl bg-stone-900 dark:bg-zinc-100 flex items-center justify-center text-white dark:text-zinc-900 shadow-soft">
                           <Sparkles className="h-5 w-5" />
                         </div>
                       </div>
@@ -247,8 +247,8 @@ export function ChatPage() {
                     <div className={clsx(
                       "px-6 py-4 rounded-2xl max-w-[85%] shadow-sm transition-shadow hover:shadow-md",
                       msg.role === 'user'
-                        ? "bg-slate-900 text-white rounded-tr-sm font-medium"
-                        : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm"
+                        ? "bg-slate-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-tr-sm font-medium"
+                        : "bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 rounded-tl-sm"
                     )}>
                       {msg.role === 'ai' ? (
                         <>
@@ -259,13 +259,13 @@ export function ChatPage() {
                           />
 
                           {msg.sources && msg.sources.length > 0 && (
-                            <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap gap-2">
+                            <div className="mt-5 pt-4 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-2">
                               {msg.sources.map((source: string, sIdx: number) => {
                                 const parts = source.split(':');
                                 const type = parts[0];
                                 const title = parts.slice(1).join(':').substring(0, 50) + (parts.slice(1).join(':').length > 50 ? '...' : '');
                                 return (
-                                  <div key={sIdx} className="inline-flex items-center px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 font-bold transition-colors hover:bg-slate-100">
+                                  <div key={sIdx} className="inline-flex items-center px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs text-slate-600 dark:text-zinc-400 font-bold transition-colors hover:bg-slate-100 dark:hover:bg-zinc-700">
                                     {renderSourceIcon(type)}
                                     <span className="truncate">{title}</span>
                                   </div>
@@ -288,13 +288,13 @@ export function ChatPage() {
                     exit={{ opacity: 0, transition: { duration: 0 } }}
                     className="flex gap-4 w-full mb-8"
                   >
-                    <div className="h-9 w-9 rounded-xl bg-stone-900 flex items-center justify-center text-white shadow-soft">
+                    <div className="h-9 w-9 rounded-xl bg-stone-900 dark:bg-zinc-100 flex items-center justify-center text-white dark:text-zinc-900 shadow-soft">
                       <Sparkles className="h-5 w-5" />
                     </div>
-                    <div className="bg-white border border-slate-200 shadow-sm px-6 py-4 rounded-2xl rounded-tl-sm flex items-center gap-2">
-                      <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    <div className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-sm px-6 py-4 rounded-2xl rounded-tl-sm flex items-center gap-2">
+                      <div className="h-2 w-2 bg-slate-300 dark:bg-zinc-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="h-2 w-2 bg-slate-300 dark:bg-zinc-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="h-2 w-2 bg-slate-300 dark:bg-zinc-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                     </div>
                   </motion.div>
                 )}
@@ -306,19 +306,19 @@ export function ChatPage() {
       </div>
 
       {/* Input Section */}
-      <div className="w-full bg-white border-t border-slate-200 p-4 shrink-0 flex flex-col items-center">
+      <div className="w-full bg-white dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-700 p-4 shrink-0 flex flex-col items-center">
         {pdfLoaded && pdfName && (
-          <div className="w-full max-w-4xl mb-3 flex items-center gap-3 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-2xl text-sm text-indigo-700 animate-in fade-in slide-in-from-bottom-2">
+          <div className="w-full max-w-4xl mb-3 flex items-center gap-3 px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl text-sm text-indigo-700 dark:text-indigo-400 animate-in fade-in slide-in-from-bottom-2">
             <FileText className="h-4 w-4" />
             <span className="flex-1 truncate font-semibold">Active Paper: {pdfName}</span>
-            <button onClick={handleClearPdf} className="p-1 hover:bg-indigo-100 rounded-full transition-colors"><X className="h-4 w-4" /></button>
+            <button onClick={handleClearPdf} className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 rounded-full transition-colors"><X className="h-4 w-4" /></button>
           </div>
         )}
 
         <div className="w-full max-w-4xl relative">
           <form onSubmit={(e) => handleSearch(e)} className="relative group">
             <textarea
-              className="w-full resize-none border border-slate-200 focus:border-slate-400 focus:ring-0 rounded-3xl p-4 pr-16 min-h-[60px] max-h-[200px] text-slate-700 placeholder:text-slate-400 shadow-sm transition-all focus:shadow-md"
+              className="w-full resize-none border border-slate-200 dark:border-zinc-700 focus:border-slate-400 dark:focus:border-zinc-600 focus:ring-0 rounded-3xl p-4 pr-16 min-h-[60px] max-h-[200px] bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 placeholder:text-slate-400 dark:placeholder:text-zinc-500 shadow-sm transition-all focus:shadow-md"
               placeholder={pdfLoaded ? "Ask about the paper..." : "Ask Data2Dash AI anything..."}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -334,7 +334,7 @@ export function ChatPage() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="h-10 w-10 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+                className="h-10 w-10 flex items-center justify-center text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 rounded-full transition-all"
                 title="Upload Source"
               >
                 <BookOpen className="h-5 w-5" />
@@ -344,7 +344,7 @@ export function ChatPage() {
                 disabled={!query.trim() || isSearching}
                 className={clsx(
                   "h-10 w-10 rounded-full flex items-center justify-center transition-all shadow-sm",
-                  query.trim() && !isSearching ? "bg-stone-900 text-white hover:bg-stone-800 active:scale-95" : "bg-slate-100 text-slate-300"
+                  query.trim() && !isSearching ? "bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-stone-800 dark:hover:bg-zinc-300 active:scale-95" : "bg-slate-100 dark:bg-zinc-800 text-slate-300 dark:text-zinc-600"
                 )}
               >
                 {isSearching ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <ArrowUp className="h-5 w-5" />}
@@ -352,7 +352,7 @@ export function ChatPage() {
             </div>
             <input type="file" ref={fileInputRef} className="hidden" accept=".pdf" onChange={handleFileUpload} />
           </form>
-          <p className="text-[10px] text-center text-slate-400 mt-2 font-medium">Data2Dash can make mistakes. Verify important information.</p>
+          <p className="text-[10px] text-center text-slate-400 dark:text-zinc-500 mt-2 font-medium">Data2Dash can make mistakes. Verify important information.</p>
         </div>
       </div>
     </div>

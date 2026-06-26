@@ -92,8 +92,8 @@ function FileTabBar({
   return (
     <div
       className={clsx(
-        'shrink-0 flex items-center gap-0 bg-stone-100 border-b border-stone-200 overflow-x-auto',
-        isDragging && 'ring-2 ring-inset ring-stone-400 bg-stone-200',
+        'shrink-0 flex items-center gap-0 bg-stone-100 dark:bg-zinc-800 border-b border-stone-200 dark:border-zinc-700 overflow-x-auto',
+        isDragging && 'ring-2 ring-inset ring-stone-400 dark:ring-zinc-500 bg-stone-200 dark:bg-zinc-700',
       )}
       style={{ scrollbarWidth: 'none' }} // hide horizontal scrollbar on tabs
       onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
@@ -131,16 +131,16 @@ function FileTabBar({
               onClick={() => isViewable && onSelect(file.id)}
               title={file.status === 'error' ? file.error : file.name}
               className={clsx(
-                'group relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-r border-stone-200 transition-all shrink-0 min-w-0 max-w-[200px] overflow-hidden',
+                'group relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-r border-stone-200 dark:border-zinc-700 transition-all shrink-0 min-w-0 max-w-[200px] overflow-hidden',
                 activeId === file.id
-                  ? 'bg-white text-stone-900 border-b-2 border-b-stone-900 -mb-px z-10'
+                  ? 'bg-white dark:bg-zinc-900 text-stone-900 dark:text-zinc-100 border-b-2 border-b-stone-900 dark:border-b-zinc-100 -mb-px z-10'
                   : file.status === 'error'
-                  ? 'text-red-500 hover:bg-red-50'
-                  : 'text-stone-500 hover:bg-stone-50 hover:text-stone-800',
+                  ? 'text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10'
+                  : 'text-stone-500 dark:text-zinc-400 hover:bg-stone-50 dark:hover:bg-zinc-800 hover:text-stone-800 dark:hover:text-zinc-200',
               )}
             >
               {isUploading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-stone-400" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-stone-400 dark:text-zinc-500" />
               ) : isIndexing ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-amber-500" />
               ) : file.status === 'error' ? (
@@ -154,7 +154,7 @@ function FileTabBar({
               </span>
 
               {isUploading && (
-                <span className="text-[10px] font-bold text-stone-400 shrink-0 tabular-nums">
+                <span className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 shrink-0 tabular-nums">
                   {file.progress ?? 0}%
                 </span>
               )}
@@ -171,7 +171,7 @@ function FileTabBar({
                   (isUploading || isIndexing) ? onCancel(file.id) : onRemove(file.id);
                 }}
                 title={isUploading || isIndexing ? 'Cancel upload' : 'Remove'}
-                className="ml-0.5 p-0.5 rounded hover:bg-stone-200 text-stone-400 hover:text-stone-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                className="ml-0.5 p-0.5 rounded hover:bg-stone-200 dark:hover:bg-zinc-600 text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
               >
                 <X className="h-3 w-3" />
               </span>
@@ -179,7 +179,7 @@ function FileTabBar({
               {/* Byte-progress bar pinned to the tab's bottom edge */}
               {isUploading && (
                 <span
-                  className="absolute bottom-0 left-0 h-0.5 bg-stone-800 transition-all duration-150"
+                  className="absolute bottom-0 left-0 h-0.5 bg-stone-800 dark:bg-zinc-200 transition-all duration-150"
                   style={{ width: `${file.progress ?? 0}%` }}
                 />
               )}
@@ -192,7 +192,7 @@ function FileTabBar({
       {/* Upload button — always at the right of the tab bar */}
       <button
         onClick={() => inputRef.current?.click()}
-        className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-stone-500 hover:text-stone-900 hover:bg-stone-200 transition-colors border-l border-stone-200 h-full"
+        className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-200 dark:hover:bg-zinc-600 transition-colors border-l border-stone-200 dark:border-zinc-700 h-full"
         title="Upload more files"
       >
         <Plus className="h-4 w-4" />
@@ -205,16 +205,16 @@ function FileTabBar({
 // ─── PDF Viewer Panel ─────────────────────────────────────────────────────────
 function PdfViewer({ file }: { file: PdfFile | null }) {
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-stone-100 overflow-hidden">
+    <div className="flex-1 flex flex-col min-w-0 bg-stone-100 dark:bg-zinc-800 overflow-hidden">
       {file?.url ? (
         <>
           {/* Minimal floating toolbar */}
-          <div className="shrink-0 h-10 flex items-center gap-2 px-3 bg-white/80 backdrop-blur-sm border-b border-stone-200">
-            <span className="text-xs text-stone-500 truncate flex-1">{file.name}</span>
+          <div className="shrink-0 h-10 flex items-center gap-2 px-3 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm border-b border-stone-200 dark:border-zinc-700">
+            <span className="text-xs text-stone-500 dark:text-zinc-400 truncate flex-1">{file.name}</span>
             <a
               href={file.url}
               download
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-500 text-[11px] font-semibold transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-stone-100 dark:bg-zinc-800 hover:bg-stone-200 dark:hover:bg-zinc-700 text-stone-500 dark:text-zinc-400 text-[11px] font-semibold transition-colors"
             >
               <Download className="h-3.5 w-3.5" />
             </a>
@@ -222,7 +222,7 @@ function PdfViewer({ file }: { file: PdfFile | null }) {
               href={file.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-500 text-[11px] font-semibold transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-stone-100 dark:bg-zinc-800 hover:bg-stone-200 dark:hover:bg-zinc-700 text-stone-500 dark:text-zinc-400 text-[11px] font-semibold transition-colors"
             >
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
@@ -235,11 +235,11 @@ function PdfViewer({ file }: { file: PdfFile | null }) {
           />
         </>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-stone-400">
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-stone-400 dark:text-zinc-500">
           <FileText className="h-14 w-14 opacity-10" />
           <div className="text-center">
-            <p className="text-sm font-semibold text-stone-500">No document open</p>
-            <p className="text-xs text-stone-400 mt-0.5">Click a tab above to view</p>
+            <p className="text-sm font-semibold text-stone-500 dark:text-zinc-400">No document open</p>
+            <p className="text-xs text-stone-400 dark:text-zinc-500 mt-0.5">Click a tab above to view</p>
           </div>
         </div>
       )}
@@ -436,7 +436,7 @@ export function PdfAnalysis() {
 
   // ── Workspace ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden bg-stone-50">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden bg-stone-50 dark:bg-zinc-950">
 
       {/* ── File Tab Bar (replaces the left sidebar) ────────────────────────── */}
       <FileTabBar
@@ -450,7 +450,7 @@ export function PdfAnalysis() {
 
       {/* Re-indexing banner */}
       {reindexing && (
-        <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs font-semibold">
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-500/10 border-b border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs font-semibold">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Re-indexing documents for chat…
         </div>
@@ -465,16 +465,16 @@ export function PdfAnalysis() {
         {/* Drag Handle */}
         <div
           onMouseDown={onMouseDown}
-          className="w-1 shrink-0 bg-stone-200 hover:bg-stone-400 active:bg-stone-500 cursor-col-resize transition-colors relative group"
+          className="w-1 shrink-0 bg-stone-200 dark:bg-zinc-700 hover:bg-stone-400 dark:hover:bg-zinc-500 active:bg-stone-500 dark:active:bg-zinc-400 cursor-col-resize transition-colors relative group"
           title="Drag to resize"
         >
           <div className="absolute inset-y-0 -left-1 -right-1" /> {/* wider hit area */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-1 rounded-full bg-stone-400 group-hover:bg-stone-600 transition-colors" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-1 rounded-full bg-stone-400 dark:bg-zinc-500 group-hover:bg-stone-600 dark:group-hover:bg-zinc-400 transition-colors" />
         </div>
 
         {/* AI Chat + Tools */}
         <div
-          className="shrink-0 flex flex-col bg-white border-l border-stone-200 overflow-hidden"
+          className="shrink-0 flex flex-col bg-white dark:bg-zinc-900 border-l border-stone-200 dark:border-zinc-700 overflow-hidden"
           style={{ width: `${chatPct}%` }}
         >
           <PaperInteractionPanel
@@ -498,17 +498,17 @@ export function PdfAnalysis() {
             initialMessage={
               currentFile ? (
                 currentFile.status === 'error' ? (
-                  <div className="flex items-start gap-3 bg-red-50 p-4 rounded-xl border border-red-200">
-                    <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-3 bg-red-50 dark:bg-red-500/10 p-4 rounded-xl border border-red-200 dark:border-red-500/20">
+                    <AlertCircle className="h-5 w-5 text-red-500 dark:text-red-400 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-red-800 font-bold text-sm mb-1">Upload failed</p>
-                      <p className="text-red-700 text-xs leading-relaxed">{currentFile.error}</p>
+                      <p className="text-red-800 dark:text-red-300 font-bold text-sm mb-1">Upload failed</p>
+                      <p className="text-red-700 dark:text-red-400 text-xs leading-relaxed">{currentFile.error}</p>
                     </div>
                   </div>
                 ) : currentFile.status === 'uploading' || currentFile.status === 'indexing' ? (
-                  <div className="flex items-center gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
-                    <Loader2 className="h-5 w-5 animate-spin text-amber-600 shrink-0" />
-                    <span className="text-amber-800 font-semibold text-sm">
+                  <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-500/10 p-4 rounded-xl border border-amber-200 dark:border-amber-500/20">
+                    <Loader2 className="h-5 w-5 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="text-amber-800 dark:text-amber-300 font-semibold text-sm">
                       {currentFile.status === 'uploading'
                         ? <>Uploading <strong>{currentFile.name}</strong>… {currentFile.progress ?? 0}%</>
                         : <>{currentFile.progressText || <>Indexing <strong>{currentFile.name}</strong> for chat…</>}</>}
@@ -516,17 +516,17 @@ export function PdfAnalysis() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200 text-xs font-semibold">
+                    <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-500/20 text-xs font-semibold">
                       ✅ <span>{currentFile.name} indexed — tables, equations & figures available</span>
                     </div>
-                    <p className="text-sm text-stone-700">
+                    <p className="text-sm text-stone-700 dark:text-zinc-300">
                       Ready to analyse <strong>{currentFile.name}</strong>. Ask me anything about its content, methodology, figures, or equations.
                     </p>
                   </div>
                 )
               ) : (
-                <div className="flex items-center gap-3 text-stone-500">
-                  <Sparkles className="h-5 w-5 text-stone-400 shrink-0" />
+                <div className="flex items-center gap-3 text-stone-500 dark:text-zinc-400">
+                  <Sparkles className="h-5 w-5 text-stone-400 dark:text-zinc-500 shrink-0" />
                   <span className="text-sm">Open a document from the tab bar to start chatting.</span>
                 </div>
               )
@@ -578,17 +578,17 @@ function EmptyState({ onUpload, onHardReset }: { onUpload: (fl: FileList) => voi
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col items-center justify-center px-6 bg-white">
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col items-center justify-center px-6 bg-white dark:bg-zinc-900">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-2xl text-center"
       >
-        <div className="inline-flex p-5 rounded-3xl bg-stone-100 mb-6">
-          <FileText className="h-10 w-10 text-stone-600" />
+        <div className="inline-flex p-5 rounded-3xl bg-stone-100 dark:bg-zinc-800 mb-6">
+          <FileText className="h-10 w-10 text-stone-600 dark:text-zinc-400" />
         </div>
-        <h1 className="text-4xl font-extrabold text-stone-900 mb-3 tracking-tight">PDF Analysis</h1>
-        <p className="text-stone-500 text-lg mb-10 max-w-md mx-auto">
+        <h1 className="text-4xl font-extrabold text-stone-900 dark:text-zinc-100 mb-3 tracking-tight">PDF Analysis</h1>
+        <p className="text-stone-500 dark:text-zinc-400 text-lg mb-10 max-w-md mx-auto">
           Upload documents and instantly chat with them using AI — extract tables, equations, figures and more.
         </p>
 
@@ -600,8 +600,8 @@ function EmptyState({ onUpload, onHardReset }: { onUpload: (fl: FileList) => voi
           className={clsx(
             'w-full rounded-3xl border-2 border-dashed p-16 flex flex-col items-center gap-4 cursor-pointer transition-all duration-200',
             isDragging
-              ? 'border-stone-600 bg-stone-100 scale-[1.01]'
-              : 'border-stone-200 bg-stone-50 hover:border-stone-400 hover:bg-stone-100',
+              ? 'border-stone-600 dark:border-zinc-400 bg-stone-100 dark:bg-zinc-800 scale-[1.01]'
+              : 'border-stone-200 dark:border-zinc-700 bg-stone-50 dark:bg-zinc-950 hover:border-stone-400 dark:hover:border-zinc-500 hover:bg-stone-100 dark:hover:bg-zinc-800',
           )}
         >
           <input
@@ -612,20 +612,20 @@ function EmptyState({ onUpload, onHardReset }: { onUpload: (fl: FileList) => voi
             accept={ACCEPT_ATTR}
             onChange={e => e.target.files?.length && onUpload(e.target.files)}
           />
-          <div className={clsx('p-4 rounded-2xl transition-colors', isDragging ? 'bg-stone-200' : 'bg-white border border-stone-200 shadow-sm')}>
-            <Upload className="h-8 w-8 text-stone-600" />
+          <div className={clsx('p-4 rounded-2xl transition-colors', isDragging ? 'bg-stone-200 dark:bg-zinc-700' : 'bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-700 shadow-sm')}>
+            <Upload className="h-8 w-8 text-stone-600 dark:text-zinc-400" />
           </div>
           <div>
-            <p className="font-bold text-stone-800 text-lg mb-1">
+            <p className="font-bold text-stone-800 dark:text-zinc-200 text-lg mb-1">
               {isDragging ? 'Release to upload' : 'Drop files here or click to browse'}
             </p>
-            <p className="text-sm text-stone-400">PDF, DOCX, TXT · up to {MAX_FILE_SIZE_MB} MB · multiple files supported</p>
+            <p className="text-sm text-stone-400 dark:text-zinc-500">PDF, DOCX, TXT · up to {MAX_FILE_SIZE_MB} MB · multiple files supported</p>
           </div>
         </div>
 
         <div className="flex flex-wrap justify-center gap-2 mt-8">
           {['Chat with documents', 'Extract tables', 'Render equations', 'Generate quizzes', 'Knowledge graphs', 'Audio summaries'].map(f => (
-            <span key={f} className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">
+            <span key={f} className="px-3 py-1.5 rounded-full bg-stone-100 dark:bg-zinc-800 text-stone-600 dark:text-zinc-400 text-xs font-semibold border border-stone-200 dark:border-zinc-700">
               {f}
             </span>
           ))}
@@ -634,7 +634,7 @@ function EmptyState({ onUpload, onHardReset }: { onUpload: (fl: FileList) => voi
         {onHardReset && (
           <button
             onClick={onHardReset}
-            className="mt-6 px-4 py-2 text-xs font-medium text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg border border-stone-200 transition-colors"
+            className="mt-6 px-4 py-2 text-xs font-medium text-stone-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg border border-stone-200 dark:border-zinc-700 transition-colors"
           >
             Hard Reset (Clear all sessions)
           </button>

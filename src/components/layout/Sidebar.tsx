@@ -83,7 +83,7 @@ export function Sidebar({ summary }: SidebarProps) {
     if (path === '/') {
       return (
         <>
-          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Recent Chats</p>
+          <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-3 px-1">Recent Chats</p>
           <div className="space-y-1">
             {summary?.recent_sessions?.filter(s => !deletedSessionIds.has(s.session_id)).length
               ? summary.recent_sessions.filter(s => !deletedSessionIds.has(s.session_id)).map(s => (
@@ -93,8 +93,8 @@ export function Sidebar({ summary }: SidebarProps) {
                     className={clsx(
                       "flex-1 min-w-0 text-left px-3 py-2 rounded-xl text-sm font-medium truncate transition-colors",
                       sessionId === s.session_id
-                        ? "bg-stone-900 text-white shadow-soft"
-                        : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
+                        ? "bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-soft"
+                        : "hover:bg-stone-100 dark:hover:bg-zinc-700 text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100"
                     )}
                   >
                     {s.title}
@@ -112,14 +112,14 @@ export function Sidebar({ summary }: SidebarProps) {
                         setDeletedSessionIds(prev => { const n = new Set(prev); n.delete(s.session_id); return n; });
                       }
                     }}
-                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                     title="Delete chat"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))
-              : <p className="text-xs text-stone-400 px-3">No recent chats.</p>}
+              : <p className="text-xs text-stone-400 dark:text-zinc-500 px-3">No recent chats.</p>}
           </div>
         </>
       );
@@ -128,7 +128,7 @@ export function Sidebar({ summary }: SidebarProps) {
     if (path === '/search') {
       return (
         <>
-          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Recent Searches</p>
+          <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-3 px-1">Recent Searches</p>
           <div className="space-y-1">
             {(() => {
               const filtered = summary?.recent_searches?.filter(s => !deletedSearchIds.has(s.search_id)) || [];
@@ -144,8 +144,8 @@ export function Sidebar({ summary }: SidebarProps) {
                       className={clsx(
                         "flex-1 min-w-0 text-left px-3 py-2 rounded-xl text-sm font-medium truncate transition-colors",
                         searchSessions.find(ls => ls.query === s.query_text && ls.id === activeSearchId)
-                          ? "bg-stone-900 text-white shadow-soft"
-                          : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
+                          ? "bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-soft"
+                          : "hover:bg-stone-100 dark:hover:bg-zinc-700 text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100"
                       )}
                     >
                       {s.query_text}
@@ -162,14 +162,14 @@ export function Sidebar({ summary }: SidebarProps) {
                           setDeletedSearchIds(prev => { const n = new Set(prev); n.delete(s.search_id); return n; });
                         }
                       }}
-                      className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                      className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                       title="Delete search"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ))
-                : <p className="text-xs text-stone-400 px-3">No recent searches.</p>;
+                : <p className="text-xs text-stone-400 dark:text-zinc-500 px-3">No recent searches.</p>;
             })()}
           </div>
         </>
@@ -305,7 +305,7 @@ export function Sidebar({ summary }: SidebarProps) {
 
       return (
         <>
-          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Recent Uploads</p>
+          <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-3 px-1">Recent Uploads</p>
           <div className="space-y-1">
             {uniqueFiles.length
               ? uniqueFiles.map(f => (
@@ -315,27 +315,27 @@ export function Sidebar({ summary }: SidebarProps) {
                 >
                   <button
                     onClick={() => handleFileRestore(f)}
-                    className="flex-1 min-w-0 text-left px-3 py-2 rounded-xl hover:bg-stone-100 text-sm font-medium text-stone-600 hover:text-stone-900 truncate flex items-center gap-2 transition-colors"
+                    className="flex-1 min-w-0 text-left px-3 py-2 rounded-xl hover:bg-stone-100 dark:hover:bg-zinc-700 text-sm font-medium text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 truncate flex items-center gap-2 transition-colors"
                   >
-                    <FileText className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-stone-400 dark:text-zinc-500" />
                     <span className="truncate">{f.original_name}</span>
                   </button>
                   <button
                     onClick={(e) => handleFileDelete(e, f)}
-                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                     title="Delete file"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))
-              : <p className="text-xs text-stone-400 px-3">No files uploaded.</p>
+              : <p className="text-xs text-stone-400 dark:text-zinc-500 px-3">No files uploaded.</p>
             }
           </div>
 
           {pdfSessions.length > 0 && (
             <>
-              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 mt-5 px-1">PDF Chats</p>
+              <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-3 mt-5 px-1">PDF Chats</p>
               <div className="space-y-1">
                 {pdfSessions.map(s => (
                   <div key={s.session_id} className="group flex items-center gap-1">
@@ -344,11 +344,11 @@ export function Sidebar({ summary }: SidebarProps) {
                       className={clsx(
                         "flex-1 min-w-0 text-left px-3 py-2 rounded-xl text-sm font-medium truncate flex items-center gap-2 transition-colors",
                         pdfStore.files.find(f => f.id === pdfStore.activeFileId)?.sessionId === s.session_id
-                          ? "bg-stone-900 text-white shadow-soft"
-                          : "hover:bg-stone-100 text-stone-600 hover:text-stone-900"
+                          ? "bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-soft"
+                          : "hover:bg-stone-100 dark:hover:bg-zinc-700 text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100"
                       )}
                     >
-                      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-stone-400 dark:text-zinc-500" />
                       <span className="truncate">{s.title}</span>
                     </button>
                     <button
@@ -363,7 +363,7 @@ export function Sidebar({ summary }: SidebarProps) {
                           setDeletedSessionIds(prev => { const n = new Set(prev); n.delete(s.session_id); return n; });
                         }
                       }}
-                      className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                      className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                       title="Delete chat"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -380,7 +380,7 @@ export function Sidebar({ summary }: SidebarProps) {
     if (path === '/citation' || path === '/workspace') {
       return (
         <>
-          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Your Library</p>
+          <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-3 px-1">Your Library</p>
           <div className="space-y-1">
             {docs.length
               ? docs.slice(0, 15).map(doc => (
@@ -390,9 +390,9 @@ export function Sidebar({ summary }: SidebarProps) {
                       setPendingOpenDocId(doc.id);
                       if (path !== '/citation') navigate('/citation');
                     }}
-                    className="flex-1 min-w-0 text-left px-3 py-2 rounded-xl hover:bg-stone-100 text-sm font-medium text-stone-600 hover:text-stone-900 truncate flex items-center gap-2 transition-colors"
+                    className="flex-1 min-w-0 text-left px-3 py-2 rounded-xl hover:bg-stone-100 dark:hover:bg-zinc-700 text-sm font-medium text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 truncate flex items-center gap-2 transition-colors"
                   >
-                    <BookMarked className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                    <BookMarked className="h-3.5 w-3.5 shrink-0 text-stone-400 dark:text-zinc-500" />
                     <span className="truncate">{doc.title || 'Untitled'}</span>
                   </button>
                   <button
@@ -400,14 +400,14 @@ export function Sidebar({ summary }: SidebarProps) {
                       e.stopPropagation();
                       deleteDoc(doc.id);
                     }}
-                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                    className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                     title="Delete document"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))
-              : <p className="text-xs text-stone-400 px-3">Library is empty.</p>}
+              : <p className="text-xs text-stone-400 dark:text-zinc-500 px-3">Library is empty.</p>}
           </div>
         </>
       );
@@ -438,7 +438,7 @@ export function Sidebar({ summary }: SidebarProps) {
       <Link 
         to={target} 
         onClick={action}
-        className="w-full flex items-center gap-2 px-4 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-bold hover:bg-stone-700 transition-all active:scale-[0.98] shadow-soft mt-6 mb-4"
+        className="w-full flex items-center gap-2 px-4 py-2.5 bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl text-sm font-bold hover:bg-stone-700 dark:hover:bg-zinc-300 transition-all active:scale-[0.98] shadow-soft mt-6 mb-4"
       >
         {icon} {text}
       </Link>
@@ -447,23 +447,23 @@ export function Sidebar({ summary }: SidebarProps) {
 
   return (
     <aside className={clsx(
-      "h-screen flex flex-col bg-stone-50 border-r border-stone-200 shrink-0 transition-all duration-300 ease-in-out overflow-hidden relative",
+      "h-screen flex flex-col bg-stone-50 dark:bg-zinc-950 border-r border-stone-200 dark:border-zinc-700 shrink-0 transition-all duration-300 ease-in-out overflow-hidden relative",
       isSidebarOpen ? "w-64 lg:w-72" : "w-0 border-none"
     )}>
       
       {/* Top Branding & Toggle */}
       <div className="p-4 shrink-0 flex items-center justify-between">
         <Link to="/workspace" className="flex items-center gap-2.5 group pl-2 truncate">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 text-white shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shrink-0">
             <Sparkles className="h-4 w-4" />
           </div>
-          <span className="font-semibold text-stone-900 text-sm tracking-tight truncate">
-            DATA<span className="text-sage-600">2</span>DASH
+          <span className="font-semibold text-stone-900 dark:text-zinc-100 text-sm tracking-tight truncate">
+            DATA<span className="text-sage-600 dark:text-emerald-400">2</span>DASH
           </span>
         </Link>
         <button 
           onClick={toggleSidebar}
-          className="p-1.5 hover:bg-stone-200/50 rounded-lg text-stone-400 hover:text-stone-900 transition-colors"
+          className="p-1.5 hover:bg-stone-200/50 dark:hover:bg-zinc-700/50 rounded-lg text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 transition-colors"
           title="Close sidebar"
         >
           <PanelLeftClose className="h-4 w-4" />
@@ -481,11 +481,11 @@ export function Sidebar({ summary }: SidebarProps) {
               className={clsx(
                 'w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 mb-0.5',
                 isActive
-                  ? 'bg-stone-200/50 text-stone-900'
-                  : 'text-stone-500 hover:text-stone-900 hover:bg-stone-200/50'
+                  ? 'bg-stone-200/50 dark:bg-zinc-700/50 text-stone-900 dark:text-zinc-100'
+                  : 'text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-200/50 dark:hover:bg-zinc-700/50'
               )}
             >
-              <item.icon className={clsx("h-4 w-4", isActive ? "text-stone-700" : "text-stone-400")} />
+              <item.icon className={clsx("h-4 w-4", isActive ? "text-stone-700 dark:text-zinc-300" : "text-stone-400 dark:text-zinc-500")} />
               {item.name}
             </Link>
           );
@@ -501,36 +501,36 @@ export function Sidebar({ summary }: SidebarProps) {
       </div>
 
       {/* User Profile Footer */}
-      <div className="p-3 shrink-0 mt-auto border-t border-stone-200/60 relative">
+      <div className="p-3 shrink-0 mt-auto border-t border-stone-200/60 dark:border-zinc-700/60 relative">
         <button
           onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-          className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-stone-200/50 transition-colors text-left"
+          className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-stone-200/50 dark:hover:bg-zinc-700/50 transition-colors text-left"
         >
           {user?.avatar_url ? (
             <img src={user.avatar_url} alt={user.full_name ?? ''} className="h-8 w-8 rounded-full object-cover shrink-0" />
           ) : (
-            <div className="h-8 w-8 rounded-full bg-stone-900 text-white flex items-center justify-center text-xs font-semibold shrink-0">
+            <div className="h-8 w-8 rounded-full bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center text-xs font-semibold shrink-0">
               {initials}
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-stone-900 truncate">{user?.full_name ?? user?.email}</p>
-            <p className="text-xs text-stone-500 truncate">{user?.email}</p>
+            <p className="text-sm font-semibold text-stone-900 dark:text-zinc-100 truncate">{user?.full_name ?? user?.email}</p>
+            <p className="text-xs text-stone-500 dark:text-zinc-400 truncate">{user?.email}</p>
           </div>
         </button>
 
         {isUserMenuOpen && (
-          <div className="absolute bottom-full left-3 right-3 mb-2 bg-white border border-stone-200 rounded-xl shadow-panel p-1 z-50">
+          <div className="absolute bottom-full left-3 right-3 mb-2 bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-700 rounded-xl shadow-panel p-1 z-50">
             <button
               onClick={() => { setIsUserMenuOpen(false); openSettings(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-stone-700 hover:bg-stone-100 transition-colors rounded-lg font-medium"
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700 transition-colors rounded-lg font-medium"
             >
               <Settings className="h-4 w-4" />
               Settings
             </button>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors rounded-lg font-medium"
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors rounded-lg font-medium"
             >
               <LogOut className="h-4 w-4" />
               Sign out

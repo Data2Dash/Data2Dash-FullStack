@@ -100,48 +100,48 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center min-h-[calc(100vh-3.5rem)] mt-14 bg-stone-50">
+      <div className="flex-1 flex items-center justify-center min-h-[calc(100vh-3.5rem)] mt-14 bg-stone-50 dark:bg-zinc-950">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 border-4 border-sage-200 border-t-sage-600 rounded-full animate-spin" />
-          <p className="text-stone-500 font-medium animate-pulse">Loading workspace...</p>
+          <div className="h-10 w-10 border-4 border-sage-200 dark:border-emerald-500/20 border-t-sage-600 dark:border-t-emerald-400 rounded-full animate-spin" />
+          <p className="text-stone-500 dark:text-zinc-400 font-medium animate-pulse">Loading workspace...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 h-full bg-stone-50/50 relative overflow-y-auto custom-scrollbar">
+    <div className="flex-1 h-full bg-stone-50/50 dark:bg-zinc-950/50 relative overflow-y-auto custom-scrollbar">
       {/* Background decoration */}
-      <div className="absolute top-0 inset-x-0 h-[500px] bg-gradient-to-b from-sage-100/40 to-transparent pointer-events-none" />
-      <div className="absolute -top-40 -right-40 w-96 h-96 bg-sage-200/50 rounded-full blur-[100px] opacity-60 pointer-events-none" />
-      <div className="absolute top-20 -left-20 w-72 h-72 bg-emerald-100/40 rounded-full blur-[80px] opacity-60 pointer-events-none" />
+      <div className="absolute top-0 inset-x-0 h-[500px] bg-gradient-to-b from-sage-100/40 dark:from-emerald-500/5 to-transparent pointer-events-none" />
+      <div className="absolute -top-40 -right-40 w-96 h-96 bg-sage-200/50 dark:bg-emerald-500/5 rounded-full blur-[100px] opacity-60 pointer-events-none" />
+      <div className="absolute top-20 -left-20 w-72 h-72 bg-emerald-100/40 dark:bg-emerald-500/10 rounded-full blur-[80px] opacity-60 pointer-events-none" />
 
       <main className="relative max-w-6xl mx-auto px-6 py-12">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 mb-10">
           <div className="flex items-center gap-4">
             {user?.avatar_url ? (
-              <img src={user.avatar_url} alt="Avatar" className="h-16 w-16 rounded-2xl object-cover shadow-soft ring-2 ring-white" />
+              <img src={user.avatar_url} alt="Avatar" className="h-16 w-16 rounded-2xl object-cover shadow-soft ring-2 ring-white dark:ring-zinc-800" />
             ) : (
-              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-stone-800 to-stone-900 text-white flex items-center justify-center text-xl font-bold shadow-soft ring-2 ring-white">
+              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-stone-800 to-stone-900 dark:from-zinc-200 dark:to-zinc-300 text-white dark:text-zinc-900 flex items-center justify-center text-xl font-bold shadow-soft ring-2 ring-white dark:ring-zinc-800">
                 {initials}
               </div>
             )}
             <div>
-              <p className="text-xs font-bold tracking-widest text-sage-600 uppercase mb-1">
+              <p className="text-xs font-bold tracking-widest text-sage-600 dark:text-emerald-400 uppercase mb-1">
                 Welcome back
               </p>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-stone-900 tracking-tight">
+              <h1 className="text-2xl md:text-3xl font-extrabold text-stone-900 dark:text-zinc-100 tracking-tight">
                 {summary?.workspace?.name || 'Your Workspace'}
               </h1>
             </div>
           </div>
           <div className="flex gap-3">
-            <Link to="/upload" className="flex items-center gap-2 px-5 py-2.5 bg-white text-stone-700 rounded-2xl font-semibold shadow-sm border border-stone-200 hover:border-stone-300 hover:bg-stone-50 transition-all active:scale-95">
+            <Link to="/upload" className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-zinc-900 text-stone-700 dark:text-zinc-300 rounded-2xl font-semibold shadow-sm border border-stone-200 dark:border-zinc-700 hover:border-stone-300 dark:hover:border-zinc-600 hover:bg-stone-50 dark:hover:bg-zinc-800 transition-all active:scale-95">
               <FolderOpen className="h-4 w-4" />
               Upload
             </Link>
-            <Link to="/" className="flex items-center gap-2 px-5 py-2.5 bg-stone-900 text-white rounded-2xl font-semibold shadow-soft hover:bg-stone-800 transition-all active:scale-95">
+            <Link to="/" className="flex items-center gap-2 px-5 py-2.5 bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-2xl font-semibold shadow-soft hover:bg-stone-800 dark:hover:bg-zinc-300 transition-all active:scale-95">
               <Plus className="h-4 w-4" />
               New Chat
             </Link>
@@ -151,19 +151,19 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
         {/* Overview Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'Total Files', value: visibleFiles.length, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
-            { label: 'Chat Sessions', value: visibleSessions.length, icon: MessageSquare, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-            { label: 'Recent Searches', value: visibleSearches.length, icon: Search, color: 'text-amber-500', bg: 'bg-amber-50' },
-            { label: 'Activity Score', value: 'High', icon: Activity, color: 'text-purple-500', bg: 'bg-purple-50' },
+            { label: 'Total Files', value: visibleFiles.length, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-500/10' },
+            { label: 'Chat Sessions', value: visibleSessions.length, icon: MessageSquare, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10' },
+            { label: 'Recent Searches', value: visibleSearches.length, icon: Search, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-500/10' },
+            { label: 'Activity Score', value: 'High', icon: Activity, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-500/10' },
           ].map((stat, i) => (
-            <div key={i} className="bg-white rounded-3xl p-5 shadow-sm border border-stone-100/50 hover:shadow-md transition-all group">
+            <div key={i} className="bg-white dark:bg-zinc-900 rounded-3xl p-5 shadow-sm border border-stone-100/50 dark:border-zinc-800 hover:shadow-md transition-all group">
               <div className="flex items-center gap-3 mb-3">
                 <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${stat.bg} ${stat.color} group-hover:scale-110 transition-transform`}>
                   <stat.icon className="h-5 w-5" />
                 </div>
-                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">{stat.label}</p>
+                <p className="text-xs font-semibold text-stone-500 dark:text-zinc-400 uppercase tracking-wider">{stat.label}</p>
               </div>
-              <p className="text-2xl font-extrabold text-stone-900">{stat.value}</p>
+              <p className="text-2xl font-extrabold text-stone-900 dark:text-zinc-100">{stat.value}</p>
             </div>
           ))}
         </div>
@@ -172,38 +172,38 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Recent Files */}
-          <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-stone-100/50">
+          <div className="lg:col-span-2 bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-stone-100/50 dark:border-zinc-800">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-sage-100 flex items-center justify-center text-sage-600">
+                <div className="h-8 w-8 rounded-lg bg-sage-100 dark:bg-emerald-500/10 flex items-center justify-center text-sage-600 dark:text-emerald-400">
                   <FileText className="h-4 w-4" />
                 </div>
-                <h2 className="text-lg font-bold text-stone-900">Recent Files</h2>
+                <h2 className="text-lg font-bold text-stone-900 dark:text-zinc-100">Recent Files</h2>
               </div>
-              <button onClick={() => navigate('/upload')} className="text-sm font-semibold text-stone-400 hover:text-stone-900 flex items-center gap-1 transition-colors group">
+              <button onClick={() => navigate('/upload')} className="text-sm font-semibold text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 flex items-center gap-1 transition-colors group">
                 View all <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
 
             {visibleFiles.length === 0 ? (
               <div className="py-10 flex flex-col items-center justify-center text-center">
-                <div className="h-12 w-12 bg-stone-50 rounded-xl flex items-center justify-center mb-3">
-                  <FolderOpen className="h-6 w-6 text-stone-300" />
+                <div className="h-12 w-12 bg-stone-50 dark:bg-zinc-950 rounded-xl flex items-center justify-center mb-3">
+                  <FolderOpen className="h-6 w-6 text-stone-300 dark:text-zinc-600" />
                 </div>
-                <p className="text-stone-500 font-medium">No files uploaded yet.</p>
-                <button onClick={() => navigate('/upload')} className="mt-4 text-sage-600 font-bold hover:text-sage-700">Upload your first file</button>
+                <p className="text-stone-500 dark:text-zinc-400 font-medium">No files uploaded yet.</p>
+                <button onClick={() => navigate('/upload')} className="mt-4 text-sage-600 dark:text-emerald-400 font-bold hover:text-sage-700">Upload your first file</button>
               </div>
             ) : (
               <div className="space-y-3">
                 {visibleFiles.map(f => (
-                  <div key={f.file_id} onClick={() => handleFileClick(f)} className="group flex items-center justify-between p-4 rounded-2xl hover:bg-stone-50 border border-transparent hover:border-stone-100 transition-all cursor-pointer">
+                  <div key={f.file_id} onClick={() => handleFileClick(f)} className="group flex items-center justify-between p-4 rounded-2xl hover:bg-stone-50 dark:hover:bg-zinc-800 border border-transparent hover:border-stone-100 dark:hover:border-zinc-700 transition-all cursor-pointer">
                     <div className="flex items-center gap-4 min-w-0">
-                      <div className="h-8 w-8 rounded-lg bg-stone-100 flex items-center justify-center shrink-0">
-                        <FileText className="h-4 w-4 text-stone-400 group-hover:text-stone-600 transition-colors" />
+                      <div className="h-8 w-8 rounded-lg bg-stone-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                        <FileText className="h-4 w-4 text-stone-400 dark:text-zinc-500 group-hover:text-stone-600 dark:group-hover:text-zinc-300 transition-colors" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-stone-900 truncate">{f.original_name}</p>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs font-medium text-stone-400">
+                        <p className="text-sm font-bold text-stone-900 dark:text-zinc-100 truncate">{f.original_name}</p>
+                        <div className="flex items-center gap-2 mt-0.5 text-xs font-medium text-stone-400 dark:text-zinc-500">
                           <span className="uppercase tracking-wider">{f.file_type}</span>
                           <span>•</span>
                           <span>{(f.size_bytes / 1024 / 1024).toFixed(2)} MB</span>
@@ -211,7 +211,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <div className="text-xs font-semibold text-stone-400 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="text-xs font-semibold text-stone-400 dark:text-zinc-500 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Clock className="h-3.5 w-3.5" />
                         {new Date(f.uploaded_at).toLocaleDateString()}
                       </div>
@@ -227,7 +227,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                             setHiddenFiles(prev => { const n = new Set(prev); n.delete(f.file_id); return n; });
                           }
                         }}
-                        className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                        className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                         title="Delete file"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -243,18 +243,18 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
           <div className="space-y-6">
             
             {/* Recent Sessions */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-stone-100/50">
+            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-stone-100/50 dark:border-zinc-800">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                  <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-500/15 flex items-center justify-center text-emerald-600">
                     <MessageSquare className="h-4 w-4" />
                   </div>
-                  <h2 className="text-base font-bold text-stone-900">Recent Chats</h2>
+                  <h2 className="text-base font-bold text-stone-900 dark:text-zinc-100">Recent Chats</h2>
                 </div>
               </div>
 
               {visibleSessions.length === 0 ? (
-                <div className="py-8 text-center text-sm font-medium text-stone-400">
+                <div className="py-8 text-center text-sm font-medium text-stone-400 dark:text-zinc-500">
                   No active chats.
                 </div>
               ) : (
@@ -262,10 +262,10 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                   {visibleSessions.map(s => (
                     <div key={s.session_id} onClick={() => handleSessionClick(s.session_id, s.session_type)} className="group cursor-pointer flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-stone-800 group-hover:text-emerald-600 transition-colors truncate mb-1">
+                        <p className="text-sm font-semibold text-stone-800 dark:text-zinc-200 group-hover:text-emerald-600 transition-colors truncate mb-1">
                           {s.title}
                         </p>
-                        <div className="flex items-center gap-2 text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                        <div className="flex items-center gap-2 text-[11px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">
                           <span>{s.session_type}</span>
                           {s.last_message_at && (
                             <>
@@ -287,7 +287,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                             setHiddenSessions(prev => { const n = new Set(prev); n.delete(s.session_id); return n; });
                           }
                         }}
-                        className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                        className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                         title="Delete chat"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -299,24 +299,24 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
             </div>
 
             {/* Recent Searches — from backend database */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-stone-100/50">
+            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-stone-100/50 dark:border-zinc-800">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">
+                  <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center text-amber-600">
                     <Zap className="h-4 w-4" />
                   </div>
-                  <h2 className="text-base font-bold text-stone-900">Searches</h2>
+                  <h2 className="text-base font-bold text-stone-900 dark:text-zinc-100">Searches</h2>
                 </div>
                 <button
                   onClick={() => navigate('/search')}
-                  className="text-sm font-semibold text-stone-400 hover:text-stone-900 flex items-center gap-1 transition-colors group"
+                  className="text-sm font-semibold text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 flex items-center gap-1 transition-colors group"
                 >
                   View all <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
 
               {visibleSearches.length === 0 ? (
-                <div className="py-8 text-center text-sm font-medium text-stone-400">
+                <div className="py-8 text-center text-sm font-medium text-stone-400 dark:text-zinc-500">
                   No search history.
                 </div>
               ) : (
@@ -332,10 +332,10 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                       className="group cursor-pointer flex items-start justify-between gap-2"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-stone-700 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug mb-1">
+                        <p className="text-sm font-semibold text-stone-700 dark:text-zinc-300 group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug mb-1">
                           &ldquo;{s.query_text}&rdquo;
                         </p>
-                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                        <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">
                           {new Date(s.timestamp).toLocaleDateString()}
                         </p>
                       </div>
@@ -351,7 +351,7 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                             setHiddenSearches(prev => { const n = new Set(prev); n.delete(s.search_id); return n; });
                           }
                         }}
-                        className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                        className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                         title="Delete search"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -366,17 +366,17 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
         </div>
 
         {/* Citation Library Grid */}
-        <div className="mt-6 bg-white rounded-3xl p-6 shadow-sm border border-stone-100/50">
+        <div className="mt-6 bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-stone-100/50 dark:border-zinc-800">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+              <div className="h-8 w-8 rounded-lg bg-purple-100 dark:bg-purple-500/15 flex items-center justify-center text-purple-600">
                 <BookMarked className="h-4 w-4" />
               </div>
-              <h2 className="text-lg font-bold text-stone-900">Your Documents</h2>
+              <h2 className="text-lg font-bold text-stone-900 dark:text-zinc-100">Your Documents</h2>
             </div>
-            <button 
-              onClick={() => navigate('/citation')} 
-              className="text-sm font-semibold text-stone-400 hover:text-stone-900 flex items-center gap-1 transition-colors group"
+            <button
+              onClick={() => navigate('/citation')}
+              className="text-sm font-semibold text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 flex items-center gap-1 transition-colors group"
             >
               Open Library <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
             </button>
@@ -384,11 +384,11 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
 
           {docs.length === 0 ? (
             <div className="py-10 flex flex-col items-center justify-center text-center">
-              <div className="h-12 w-12 bg-stone-50 rounded-xl flex items-center justify-center mb-3">
-                <FileText className="h-6 w-6 text-stone-300" />
+              <div className="h-12 w-12 bg-stone-50 dark:bg-zinc-950 rounded-xl flex items-center justify-center mb-3">
+                <FileText className="h-6 w-6 text-stone-300 dark:text-zinc-600" />
               </div>
-              <p className="text-stone-500 font-medium">No documents saved yet.</p>
-              <button onClick={() => navigate('/citation')} className="mt-4 text-sage-600 font-bold hover:text-sage-700">Create your first document</button>
+              <p className="text-stone-500 dark:text-zinc-400 font-medium">No documents saved yet.</p>
+              <button onClick={() => navigate('/citation')} className="mt-4 text-sage-600 dark:text-emerald-400 font-bold hover:text-sage-700">Create your first document</button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -399,11 +399,11 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                     setPendingOpenDocId(doc.id);
                     navigate('/citation');
                   }}
-                  className="group p-5 rounded-2xl border border-stone-100 bg-stone-50/50 hover:bg-white hover:shadow-md hover:border-stone-200 transition-all cursor-pointer"
+                  className="group p-5 rounded-2xl border border-stone-100 dark:border-zinc-800 bg-stone-50/50 dark:bg-zinc-950/50 hover:bg-white dark:hover:bg-zinc-800 hover:shadow-md hover:border-stone-200 dark:hover:border-zinc-600 transition-all cursor-pointer"
                 >
                   <div className="flex items-start justify-between mb-3">
-                    <div className="h-8 w-8 rounded-lg bg-white shadow-sm border border-stone-100 flex items-center justify-center">
-                      <FileText className="h-4 w-4 text-stone-400 group-hover:text-purple-500 transition-colors" />
+                    <div className="h-8 w-8 rounded-lg bg-white dark:bg-zinc-900 shadow-sm border border-stone-100 dark:border-zinc-800 flex items-center justify-center">
+                      <FileText className="h-4 w-4 text-stone-400 dark:text-zinc-500 group-hover:text-purple-500 transition-colors" />
                     </div>
                     <button
                       onClick={(e) => {
@@ -411,14 +411,14 @@ export function WorkspacePage({ summary }: WorkspaceProps) {
                         deleteDoc(doc.id);
                         triggerRefresh();
                       }}
-                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-stone-400 hover:text-red-500 transition-all"
+                      className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/10 text-stone-400 dark:text-zinc-500 hover:text-red-500 transition-all"
                       title="Delete document"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <h3 className="font-bold text-stone-900 text-base mb-1 truncate">{doc.title || 'Untitled'}</h3>
-                  <div className="flex items-center gap-3 text-xs font-semibold text-stone-400">
+                  <h3 className="font-bold text-stone-900 dark:text-zinc-100 text-base mb-1 truncate">{doc.title || 'Untitled'}</h3>
+                  <div className="flex items-center gap-3 text-xs font-semibold text-stone-400 dark:text-zinc-500">
                     <span className="flex items-center gap-1"><BookMarked className="h-3 w-3" /> {doc.citations.length} cites</span>
                     <span>•</span>
                     <span>{doc.wordCount} words</span>

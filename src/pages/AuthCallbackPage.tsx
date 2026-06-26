@@ -33,10 +33,10 @@ export function AuthCallbackPage() {
     }, []);
 
     return (
-        <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+        <div className="min-h-screen bg-stone-50 dark:bg-zinc-950 flex items-center justify-center">
             <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-stone-400 mx-auto mb-3" />
-                <p className="text-sm text-stone-500">Completing sign-in…</p>
+                <Loader2 className="h-8 w-8 animate-spin text-stone-400 dark:text-zinc-500 mx-auto mb-3" />
+                <p className="text-sm text-stone-500 dark:text-zinc-400">Completing sign-in…</p>
             </div>
         </div>
     );

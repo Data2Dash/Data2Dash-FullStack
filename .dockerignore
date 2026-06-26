@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.claude
+__pycache__
+*.pyc
+backend_python/venv
+backend_python/data
+backend_python/*.db
+*.env
+.env.*
+!.env.example
+output
+test_kg.html
+test2_kg.html
+*.txt
+!requirements.txt

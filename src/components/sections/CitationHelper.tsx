@@ -183,15 +183,15 @@ export function CitationHelper() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900 flex font-sans selection:bg-sage-100 selection:text-sage-900">
+    <div className="min-h-screen bg-stone-50 dark:bg-zinc-950 text-stone-900 dark:text-zinc-100 flex font-sans selection:bg-sage-100 dark:selection:bg-emerald-500/20 selection:text-sage-900 dark:selection:text-emerald-100">
       {/* ── Left Sidebar ── */}
-      <aside className="w-64 border-r border-stone-200 flex flex-col p-4 shrink-0 hidden lg:flex bg-white">
+      <aside className="w-64 border-r border-stone-200 dark:border-zinc-700 flex flex-col p-4 shrink-0 hidden lg:flex bg-white dark:bg-zinc-900">
         <div className="flex items-center gap-3 mb-8 px-2">
-          <div className="h-8 w-8 bg-stone-900 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+          <div className="h-8 w-8 bg-stone-900 dark:bg-zinc-100 rounded-lg flex items-center justify-center text-white dark:text-zinc-900 font-bold text-sm">
             <Sparkles className="h-4 w-4" />
           </div>
-          <span className="font-semibold text-sm tracking-tight text-stone-900">
-            DATA<span className="text-sage-600">2</span>DASH
+          <span className="font-semibold text-sm tracking-tight text-stone-900 dark:text-zinc-100">
+            DATA<span className="text-sage-600 dark:text-emerald-400">2</span>DASH
           </span>
         </div>
         
@@ -205,7 +205,7 @@ export function CitationHelper() {
             <Link 
               key={item.label} 
               to={item.path}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-stone-600 hover:text-stone-900 hover:bg-stone-50 transition-all text-sm font-medium"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 transition-all text-sm font-medium"
             >
               <item.icon className="h-4 w-4" /> {item.label}
             </Link>
@@ -213,44 +213,44 @@ export function CitationHelper() {
         </nav>
 
         <div className="mt-8">
-          <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">Workspace</p>
-          <div className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-stone-900 bg-stone-100/80 text-sm font-semibold">
-            <FileText className="h-4 w-4 text-stone-400" /> Current Manuscript
+          <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-zinc-500 mb-2">Workspace</p>
+          <div className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-stone-900 dark:text-zinc-100 bg-stone-100/80 dark:bg-zinc-800/80 text-sm font-semibold">
+            <FileText className="h-4 w-4 text-stone-400 dark:text-zinc-500" /> Current Manuscript
           </div>
         </div>
 
         <div className="mt-auto pt-4 space-y-2">
-          <button className="flex items-center gap-2 text-stone-400 hover:text-stone-900 text-xs px-2"><Share2 className="h-4 w-4" /> Community</button>
-          <button className="flex items-center gap-2 text-stone-400 hover:text-stone-900 text-xs px-2"><User className="h-4 w-4" /> Support</button>
+          <button className="flex items-center gap-2 text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 text-xs px-2"><Share2 className="h-4 w-4" /> Community</button>
+          <button className="flex items-center gap-2 text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 text-xs px-2"><User className="h-4 w-4" /> Support</button>
         </div>
       </aside>
 
       {/* ── Main Editor ── */}
-      <main className="flex-1 flex flex-col relative overflow-hidden bg-stone-50/50">
+      <main className="flex-1 flex flex-col relative overflow-hidden bg-stone-50/50 dark:bg-zinc-950/50">
         {/* Header toolbar */}
-        <header className="h-14 border-b border-stone-200 flex items-center justify-between px-6 bg-white/80 backdrop-blur-md z-30">
+        <header className="h-14 border-b border-stone-200 dark:border-zinc-700 flex items-center justify-between px-6 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md z-30">
           <div className="flex items-center gap-4">
-             <button className="text-stone-400 hover:text-stone-900"><List className="h-5 w-5" /></button>
-             <h2 className="text-sm font-medium text-stone-600 uppercase tracking-widest">{articleTitle}</h2>
+             <button className="text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100"><List className="h-5 w-5" /></button>
+             <h2 className="text-sm font-medium text-stone-600 dark:text-zinc-400 uppercase tracking-widest">{articleTitle}</h2>
           </div>
           <div className="flex items-center gap-3">
-             <button className="p-2 text-stone-400 hover:text-stone-900"><Monitor className="h-4 w-4" /></button>
+             <button className="p-2 text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100"><Monitor className="h-4 w-4" /></button>
           </div>
         </header>
 
         {/* Editor Area */}
         <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-12 bg-dot-pattern">
-          <div className="max-w-3xl mx-auto flex flex-col min-h-full bg-white p-12 md:p-16 rounded-[2.5rem] shadow-card border border-stone-100">
+          <div className="max-w-3xl mx-auto flex flex-col min-h-full bg-white dark:bg-zinc-900 p-12 md:p-16 rounded-[2.5rem] shadow-card border border-stone-100 dark:border-zinc-800">
             <input 
               value={articleTitle}
               onChange={(e) => setArticleTitle(e.target.value)}
-              className="text-5xl font-extrabold bg-transparent border-none outline-none text-stone-900 mb-8 placeholder:text-stone-200"
+              className="text-5xl font-extrabold bg-transparent border-none outline-none text-stone-900 dark:text-zinc-100 mb-8 placeholder:text-stone-200 dark:placeholder:text-zinc-500"
               placeholder="Article title..."
             />
             
             {/* Error Message */}
             {error && (
-              <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-red-50 text-red-600 px-4 py-2 rounded-lg border border-red-100 shadow-lg text-sm font-medium flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+              <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 px-4 py-2 rounded-lg border border-red-100 dark:border-red-500/20 shadow-lg text-sm font-medium flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
                 <X className="h-4 w-4" /> {error}
               </div>
             )}
@@ -261,26 +261,26 @@ export function CitationHelper() {
               onMouseUp={handleTextSelect}
               onKeyUp={updateCounts}
               onInput={updateCounts}
-              className="flex-1 text-xl leading-[1.8] text-stone-800 outline-none font-serif min-h-[400px] selection:bg-sage-100 selection:text-sage-900"
+              className="flex-1 text-xl leading-[1.8] text-stone-800 dark:text-zinc-200 outline-none font-serif min-h-[400px] selection:bg-sage-100 dark:selection:bg-emerald-500/20 selection:text-sage-900 dark:selection:text-emerald-100"
               suppressContentEditableWarning
               dangerouslySetInnerHTML={{ __html: INITIAL_CONTENT }}
             />
 
             {/* References Section */}
             {citations.length > 0 && (
-              <div className="mt-20 pt-12 border-t border-stone-100 pb-10">
+              <div className="mt-20 pt-12 border-t border-stone-100 dark:border-zinc-800 pb-10">
                 <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-lg font-bold text-stone-900">References</h3>
-                  <button className="text-xs text-stone-400 hover:text-sage-600 transition-colors flex items-center gap-1 font-medium">
+                  <h3 className="text-lg font-bold text-stone-900 dark:text-zinc-100">References</h3>
+                  <button className="text-xs text-stone-400 dark:text-zinc-500 hover:text-sage-600 dark:hover:text-emerald-400 transition-colors flex items-center gap-1 font-medium">
                     Change format in settings <CopyIcon className="h-3 w-3" />
                   </button>
                 </div>
                 <div className="space-y-6">
                   {citations.map((cite) => (
-                    <div key={cite.id} className="text-sm text-stone-600 leading-relaxed font-serif pl-6 -indent-6">
+                    <div key={cite.id} className="text-sm text-stone-600 dark:text-zinc-400 leading-relaxed font-serif pl-6 -indent-6">
                       {citationToText(cite[activeStyle])}
                       {cite.source && (
-                        <a href={cite.source} target="_blank" rel="noreferrer" className="block text-sage-600/70 hover:text-sage-700 underline mt-1 break-all">
+                        <a href={cite.source} target="_blank" rel="noreferrer" className="block text-sage-600/70 dark:text-emerald-400/70 hover:text-sage-700 dark:hover:text-emerald-400 underline mt-1 break-all">
                           {cite.source}
                         </a>
                       )}
@@ -294,22 +294,22 @@ export function CitationHelper() {
 
         {/* Floating Bottom Toolbar */}
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
-           <div className="bg-white/90 backdrop-blur-xl border border-stone-200 rounded-2xl shadow-panel p-2 flex items-center gap-1">
-              <div className="px-3 border-r border-stone-100 flex items-center gap-2">
-                 <div className="h-2 w-2 rounded-full bg-sage-500"></div>
-                 <span className="text-xs font-semibold text-stone-700">Regular text</span>
-                 <ChevronDown className="h-3 w-3 text-stone-400" />
+           <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-stone-200 dark:border-zinc-700 rounded-2xl shadow-panel p-2 flex items-center gap-1">
+              <div className="px-3 border-r border-stone-100 dark:border-zinc-800 flex items-center gap-2">
+                 <div className="h-2 w-2 rounded-full bg-sage-500 dark:bg-emerald-500"></div>
+                 <span className="text-xs font-semibold text-stone-700 dark:text-zinc-300">Regular text</span>
+                 <ChevronDown className="h-3 w-3 text-stone-400 dark:text-zinc-500" />
               </div>
               <div className="flex items-center gap-0.5 px-2">
-                 <button className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-all"><Bold className="h-4 w-4" /></button>
-                 <button className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-all"><Italic className="h-4 w-4" /></button>
-                 <button className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-all"><Underline className="h-4 w-4" /></button>
-                 <button className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-all"><Strikethrough className="h-4 w-4" /></button>
-                 <button className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-all"><LinkIcon className="h-4 w-4" /></button>
-                 <div className="w-[1px] h-4 bg-stone-100 mx-1"></div>
-                 <button className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-all"><List className="h-4 w-4" /></button>
-                 <button className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-all"><Quote className="h-4 w-4" /></button>
-                 <button className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-all"><Code className="h-4 w-4" /></button>
+                 <button className="p-2 text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 rounded-lg transition-all"><Bold className="h-4 w-4" /></button>
+                 <button className="p-2 text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 rounded-lg transition-all"><Italic className="h-4 w-4" /></button>
+                 <button className="p-2 text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 rounded-lg transition-all"><Underline className="h-4 w-4" /></button>
+                 <button className="p-2 text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 rounded-lg transition-all"><Strikethrough className="h-4 w-4" /></button>
+                 <button className="p-2 text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 rounded-lg transition-all"><LinkIcon className="h-4 w-4" /></button>
+                 <div className="w-[1px] h-4 bg-stone-100 dark:bg-zinc-800 mx-1"></div>
+                 <button className="p-2 text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 rounded-lg transition-all"><List className="h-4 w-4" /></button>
+                 <button className="p-2 text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 rounded-lg transition-all"><Quote className="h-4 w-4" /></button>
+                 <button className="p-2 text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-50 dark:hover:bg-zinc-800 rounded-lg transition-all"><Code className="h-4 w-4" /></button>
               </div>
            </div>
         </div>
@@ -317,28 +317,28 @@ export function CitationHelper() {
         {/* Inline Citation Card */}
         {searchBoxPos && selectedText && (
           <div 
-            className="absolute z-50 w-[450px] bg-white/95 backdrop-blur-xl border border-stone-200 rounded-2xl shadow-panel overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200"
+            className="absolute z-50 w-[450px] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-stone-200 dark:border-zinc-700 rounded-2xl shadow-panel overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200"
             style={{ 
               top: `${searchBoxPos.top}px`, 
               left: `${searchBoxPos.left}px` 
             }}
           >
-            <div className="p-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
-              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-widest flex items-center gap-2">
-                <Search className="h-3 w-3 text-sage-600" /> Find citations
+            <div className="p-4 border-b border-stone-100 dark:border-zinc-800 flex items-center justify-between bg-stone-50/50 dark:bg-zinc-950/50">
+              <span className="text-[10px] font-bold text-stone-600 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                <Search className="h-3 w-3 text-sage-600 dark:text-emerald-400" /> Find citations
               </span>
               <div className="flex items-center gap-2">
-                 <span className="text-[9px] font-bold text-stone-500 px-1.5 py-0.5 bg-white rounded border border-stone-100 uppercase">online</span>
-                 <span className="text-[9px] font-bold text-stone-500 px-1.5 py-0.5 bg-white rounded border border-stone-100 uppercase">relevance</span>
-                 <button onClick={() => setSearchBoxPos(null)} className="text-stone-300 hover:text-stone-600 ml-2 transition-colors"><X className="h-4 w-4" /></button>
+                 <span className="text-[9px] font-bold text-stone-500 dark:text-zinc-400 px-1.5 py-0.5 bg-white dark:bg-zinc-900 rounded border border-stone-100 dark:border-zinc-800 uppercase">online</span>
+                 <span className="text-[9px] font-bold text-stone-500 dark:text-zinc-400 px-1.5 py-0.5 bg-white dark:bg-zinc-900 rounded border border-stone-100 dark:border-zinc-800 uppercase">relevance</span>
+                 <button onClick={() => setSearchBoxPos(null)} className="text-stone-300 dark:text-zinc-600 hover:text-stone-600 dark:hover:text-zinc-400 ml-2 transition-colors"><X className="h-4 w-4" /></button>
               </div>
             </div>
             
             <div className="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
               <div className="relative mb-6">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400 dark:text-zinc-500" />
                  <input 
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl py-2 pl-10 pr-4 text-sm text-stone-900 focus:ring-1 focus:ring-sage-200 focus:border-sage-400 outline-none transition-all font-medium"
+                    className="w-full bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl py-2 pl-10 pr-4 text-sm text-stone-900 dark:text-zinc-100 focus:ring-1 focus:ring-sage-200 dark:focus:ring-emerald-500/30 focus:border-sage-400 dark:focus:border-emerald-500 outline-none transition-all font-medium"
                     value={selectedText}
                     readOnly
                  />
@@ -346,33 +346,33 @@ export function CitationHelper() {
 
               {isSearching ? (
                 <div className="flex flex-col items-center justify-center py-12">
-                   <Sparkles className="h-6 w-6 text-sage-500 animate-pulse mb-3" />
-                   <p className="text-xs text-stone-400 font-medium">Searching academic databases...</p>
+                   <Sparkles className="h-6 w-6 text-sage-500 dark:text-emerald-500 animate-pulse mb-3" />
+                   <p className="text-xs text-stone-400 dark:text-zinc-500 font-medium">Searching academic databases...</p>
                 </div>
               ) : searchResults.length > 0 ? (
                 <div className="space-y-6">
                   {searchResults.map((paper, idx) => (
                     <div key={idx} className="group flex flex-col gap-3">
                        <div>
-                          <h4 className="text-sm font-bold text-stone-900 leading-snug group-hover:text-sage-700 transition-colors">{paper.title}</h4>
-                          <p className="text-xs text-stone-500 mt-1 font-medium">{paper.authors.join(', ')}</p>
+                          <h4 className="text-sm font-bold text-stone-900 dark:text-zinc-100 leading-snug group-hover:text-sage-700 dark:group-hover:text-emerald-400 transition-colors">{paper.title}</h4>
+                          <p className="text-xs text-stone-500 dark:text-zinc-400 mt-1 font-medium">{paper.authors.join(', ')}</p>
                        </div>
                        
                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                          <span className="text-[11px] font-semibold text-stone-400">{paper.year}</span>
-                          <span className="text-[11px] font-semibold text-stone-400">• 1 citations</span>
-                          {paper.url && <a href={paper.url} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-sage-600 hover:text-sage-800 underline">PDF ↗</a>}
-                          {paper.doi && <a href={`https://doi.org/${paper.doi}`} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-sage-600 hover:text-sage-800 underline">DOI ↗</a>}
+                          <span className="text-[11px] font-semibold text-stone-400 dark:text-zinc-500">{paper.year}</span>
+                          <span className="text-[11px] font-semibold text-stone-400 dark:text-zinc-500">• 1 citations</span>
+                          {paper.url && <a href={paper.url} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-sage-600 dark:text-emerald-400 hover:text-sage-800 dark:hover:text-emerald-300 underline">PDF ↗</a>}
+                          {paper.doi && <a href={`https://doi.org/${paper.doi}`} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-sage-600 dark:text-emerald-400 hover:text-sage-800 dark:hover:text-emerald-300 underline">DOI ↗</a>}
                           
                           <div className="ml-auto flex gap-2">
-                             <button className="px-3 py-1 text-[11px] font-bold text-stone-500 hover:text-stone-900 transition-colors">Add to library</button>
+                             <button className="px-3 py-1 text-[11px] font-bold text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 transition-colors">Add to library</button>
                              <button 
                                onMouseDown={(e) => {
                                  e.preventDefault(); // CRITICAL: Prevents focus from leaving the editor
                                  handleCitePaper(paper);
                                }}
                                disabled={isFormatting === paper.id}
-                               className="px-4 py-1.5 bg-stone-900 text-white text-[11px] font-bold rounded-full hover:bg-stone-800 transition-all active:scale-[0.98] disabled:opacity-50 shadow-soft"
+                               className="px-4 py-1.5 bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[11px] font-bold rounded-full hover:bg-stone-800 dark:hover:bg-zinc-200 transition-all active:scale-[0.98] disabled:opacity-50 shadow-soft"
                              >
                                {isFormatting === paper.id ? '...' : 'Cite'}
                              </button>
@@ -383,7 +383,7 @@ export function CitationHelper() {
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <p className="text-xs text-stone-400 font-medium">No matching articles found.</p>
+                  <p className="text-xs text-stone-400 dark:text-zinc-500 font-medium">No matching articles found.</p>
                 </div>
               )}
             </div>
@@ -392,20 +392,20 @@ export function CitationHelper() {
       </main>
 
       {/* ── Right Sidebar ── */}
-      <aside className="w-68 border-l border-stone-200 flex flex-col shrink-0 hidden xl:flex bg-white">
-         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Statistics</span>
-            <FileText className="h-4 w-4 text-stone-300" />
+      <aside className="w-68 border-l border-stone-200 dark:border-zinc-700 flex flex-col shrink-0 hidden xl:flex bg-white dark:bg-zinc-900">
+         <div className="p-4 border-b border-stone-100 dark:border-zinc-800 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-widest">Statistics</span>
+            <FileText className="h-4 w-4 text-stone-300 dark:text-zinc-600" />
          </div>
          
          <div className="p-5 space-y-4">
             <div className="flex justify-between items-center text-xs">
-               <span className="text-stone-400 font-medium">Word count</span>
-               <span className="text-stone-900 font-bold">{counts.words}</span>
+               <span className="text-stone-400 dark:text-zinc-500 font-medium">Word count</span>
+               <span className="text-stone-900 dark:text-zinc-100 font-bold">{counts.words}</span>
             </div>
             <div className="flex justify-between items-center text-xs">
-               <span className="text-stone-400 font-medium">Character count</span>
-               <span className="text-stone-900 font-bold">{counts.chars}</span>
+               <span className="text-stone-400 dark:text-zinc-500 font-medium">Character count</span>
+               <span className="text-stone-900 dark:text-zinc-100 font-bold">{counts.chars}</span>
             </div>
          </div>
       </aside>

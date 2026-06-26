@@ -42,7 +42,7 @@ function TabContainer() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-screen overflow-hidden bg-stone-50 font-sans text-stone-900 selection:bg-sage-100 selection:text-sage-900">
+      <div className="flex h-screen overflow-hidden bg-stone-50 dark:bg-zinc-950 font-sans text-stone-900 dark:text-zinc-100 selection:bg-sage-100 selection:text-sage-900">
         <Sidebar summary={summary} />
         
         {/* Main Content Area */}
@@ -53,7 +53,7 @@ function TabContainer() {
           {!isSidebarOpen && (
             <button
               onClick={toggleSidebar}
-              className="absolute top-4 left-4 z-[100] p-2 bg-white border border-stone-200 rounded-xl shadow-soft text-stone-400 hover:text-stone-900 transition-all hover:scale-105 active:scale-95"
+              className="absolute top-4 left-4 z-[100] p-2 bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-700 rounded-xl shadow-soft text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 transition-all hover:scale-105 active:scale-95"
               title="Open sidebar"
             >
               <PanelLeftOpen className="h-5 w-5" />

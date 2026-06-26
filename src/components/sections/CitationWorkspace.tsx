@@ -393,7 +393,7 @@ export function CitationWorkspace() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-full w-full bg-stone-50 text-stone-900 flex font-sans selection:bg-sage-100 selection:text-sage-900 overflow-hidden">
+    <div className="h-full w-full bg-stone-50 dark:bg-zinc-950 text-stone-900 dark:text-zinc-100 flex font-sans selection:bg-sage-100 dark:selection:bg-emerald-500/20 selection:text-sage-900 dark:selection:text-emerald-100 overflow-hidden">
 
       {/* Hidden file input for .docx */}
       <input
@@ -405,21 +405,21 @@ export function CitationWorkspace() {
       />
 
       {/* ── Main column ── */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-white">
+      <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
 
         {/* Workspace header bar */}
-        <header className="h-14 border-b border-stone-200 flex items-center justify-between px-6 bg-white shrink-0 z-30">
+        <header className="h-14 border-b border-stone-200 dark:border-zinc-700 flex items-center justify-between px-6 bg-white dark:bg-zinc-900 shrink-0 z-30">
           <div className="flex items-center gap-4 min-w-0">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-50 rounded-xl border border-stone-100">
-              <FileText className="h-4 w-4 text-stone-400" />
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-50 dark:bg-zinc-950 rounded-xl border border-stone-100 dark:border-zinc-800">
+              <FileText className="h-4 w-4 text-stone-400 dark:text-zinc-500" />
               <input
                 value={articleTitle}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="bg-transparent border-none focus:ring-0 text-sm font-bold text-stone-900 placeholder:text-stone-300 w-[150px] md:w-[300px]"
+                className="bg-transparent border-none focus:ring-0 text-sm font-bold text-stone-900 dark:text-zinc-100 placeholder:text-stone-300 dark:placeholder:text-zinc-500 w-[150px] md:w-[300px]"
                 placeholder="Untitled Article"
               />
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-stone-400 uppercase tracking-widest bg-stone-50 px-2 py-1 rounded-lg">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-widest bg-stone-50 dark:bg-zinc-950 px-2 py-1 rounded-lg">
               <div className={`h-1.5 w-1.5 rounded-full ${syncing ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
               {syncing ? 'Syncing' : 'Saved'}
             </div>
@@ -427,15 +427,15 @@ export function CitationWorkspace() {
 
           <div className="flex items-center gap-3">
             <StyleSelector active={activeStyle} onChange={handleStyleChange} />
-            <div className="flex bg-stone-100 rounded-xl p-0.5">
-              <button onClick={handleNewDoc} className="px-3 py-1.5 text-xs font-bold text-stone-600 hover:text-stone-900 transition-colors" title="New Page">
+            <div className="flex bg-stone-100 dark:bg-zinc-800 rounded-xl p-0.5">
+              <button onClick={handleNewDoc} className="px-3 py-1.5 text-xs font-bold text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 transition-colors" title="New Page">
                 <Plus className="h-4 w-4" />
               </button>
-              <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-xs font-bold text-stone-600 hover:text-stone-900 transition-colors border-l border-stone-200" title="Upload .docx">
+              <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-xs font-bold text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 transition-colors border-l border-stone-200 dark:border-zinc-700" title="Upload .docx">
                 <Upload className="h-4 w-4" />
               </button>
             </div>
-            <div className="w-px h-4 bg-stone-200 mx-1" />
+            <div className="w-px h-4 bg-stone-200 dark:bg-zinc-700 mx-1" />
             <ExportMenu citations={citations} activeStyle={activeStyle} articleTitle={articleTitle} />
           </div>
         </header>
@@ -454,18 +454,18 @@ export function CitationWorkspace() {
                 className="fixed z-40 flex items-center gap-1.5 px-3 py-2 bg-stone-900 text-white text-xs font-bold rounded-full shadow-panel hover:bg-stone-700 active:scale-95 transition-all animate-in fade-in zoom-in-90 duration-150"
                 style={{ top: floatBtn.top, left: floatBtn.left, transform: 'translateX(-50%)' }}
               >
-                <Sparkles className="h-3.5 w-3.5 text-sage-300" />
+                <Sparkles className="h-3.5 w-3.5 text-sage-300 dark:text-emerald-300" />
                 Cite This
-                <span className="text-[10px] text-stone-400 font-normal hidden sm:inline">Ctrl+K</span>
+                <span className="text-[10px] text-stone-400 dark:text-zinc-500 font-normal hidden sm:inline">Ctrl+K</span>
               </button>
             )}
 
             {/* Document card */}
-            <div className="max-w-3xl mx-auto bg-white rounded-[2.5rem] shadow-card border border-stone-100 p-10 md:p-16 min-h-full">
+            <div className="max-w-3xl mx-auto bg-white dark:bg-zinc-900 rounded-[2.5rem] shadow-card border border-stone-100 dark:border-zinc-800 p-10 md:p-16 min-h-full">
               <input
                 value={articleTitle}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="text-3xl md:text-4xl font-extrabold bg-transparent border-none outline-none text-stone-900 mb-8 placeholder:text-stone-200 w-full"
+                className="text-3xl md:text-4xl font-extrabold bg-transparent border-none outline-none text-stone-900 dark:text-zinc-100 mb-8 placeholder:text-stone-200 dark:placeholder:text-zinc-500 w-full"
                 placeholder="Article title…"
               />
 
@@ -476,7 +476,7 @@ export function CitationWorkspace() {
                 onKeyUp={updateCounts}
                 onInput={updateCounts}
                 suppressContentEditableWarning
-                className="text-lg leading-[1.9] text-stone-700 outline-none font-serif min-h-[350px] selection:bg-sage-100"
+                className="text-lg leading-[1.9] text-stone-700 dark:text-zinc-300 outline-none font-serif min-h-[350px] selection:bg-sage-100 dark:selection:bg-emerald-500/20"
               />
 
               <ReferenceList citations={citations} activeStyle={activeStyle} onRetry={handleRetry} />
@@ -501,9 +501,9 @@ export function CitationWorkspace() {
         </div>
 
         {/* Bottom formatting toolbar */}
-        <div className="shrink-0 border-t border-stone-200 bg-white/90 backdrop-blur-md px-4 md:px-6 h-11 flex items-center justify-between gap-4 z-20">
+        <div className="shrink-0 border-t border-stone-200 dark:border-zinc-700 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md px-4 md:px-6 h-11 flex items-center justify-between gap-4 z-20">
           <div className="flex items-center gap-0.5">
-            <span className="text-[10px] font-bold text-stone-300 uppercase tracking-wider mr-2 hidden md:inline">Format</span>
+            <span className="text-[10px] font-bold text-stone-300 dark:text-zinc-600 uppercase tracking-wider mr-2 hidden md:inline">Format</span>
             {[
               { icon: Bold, cmd: 'bold', title: 'Bold' },
               { icon: Italic, cmd: 'italic', title: 'Italic' },
@@ -514,12 +514,12 @@ export function CitationWorkspace() {
                 key={cmd}
                 title={title}
                 onMouseDown={(e) => { e.preventDefault(); execFormat(cmd); }}
-                className="p-1.5 text-stone-400 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-all"
+                className="p-1.5 text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-100 dark:hover:bg-zinc-700 rounded-lg transition-all"
               >
                 <Icon className="h-3.5 w-3.5" />
               </button>
             ))}
-            <div className="w-px h-4 bg-stone-100 mx-1" />
+            <div className="w-px h-4 bg-stone-100 dark:bg-zinc-800 mx-1" />
             {[
               { icon: List, cmd: 'insertUnorderedList', title: 'List' },
               { icon: Quote, cmd: 'formatBlock', title: 'Quote' },
@@ -528,7 +528,7 @@ export function CitationWorkspace() {
                 key={cmd}
                 title={title}
                 onMouseDown={(e) => { e.preventDefault(); execFormat(cmd); }}
-                className="p-1.5 text-stone-400 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-all"
+                className="p-1.5 text-stone-400 dark:text-zinc-500 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-100 dark:hover:bg-zinc-700 rounded-lg transition-all"
               >
                 <Icon className="h-3.5 w-3.5" />
               </button>
@@ -542,8 +542,8 @@ export function CitationWorkspace() {
       {/* Toast */}
       {toast && (
         <div className={`fixed top-20 left-1/2 -translate-x-1/2 z-[90] flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-panel text-sm font-semibold animate-in fade-in slide-in-from-top-2 duration-200 border
-          ${toast.type === 'error' ? 'bg-red-50 text-red-700 border-red-100'
-            : toast.type === 'success' ? 'bg-sage-50 text-sage-700 border-sage-100'
+          ${toast.type === 'error' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border-red-100 dark:border-red-500/20'
+            : toast.type === 'success' ? 'bg-sage-50 dark:bg-emerald-500/10 text-sage-700 dark:text-emerald-400 border-sage-100 dark:border-emerald-500/20'
             : 'bg-stone-900 text-white border-transparent'}`}
         >
           {toast.msg}

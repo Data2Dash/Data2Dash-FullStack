@@ -30,28 +30,28 @@ export function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen bg-stone-50 flex items-center justify-center px-4 py-16">
+        <div className="min-h-screen bg-stone-50 dark:bg-zinc-950 flex items-center justify-center px-4 py-16">
             <div className="w-full max-w-sm">
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center gap-2 mb-6">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-stone-900 text-white">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900">
                             <Sparkles className="h-4 w-4" />
                         </div>
-                        <span className="font-semibold text-stone-900 text-lg">
-                            DATA<span className="text-sage-600">2</span>DASH
+                        <span className="font-semibold text-stone-900 dark:text-zinc-100 text-lg">
+                            DATA<span className="text-sage-600 dark:text-emerald-400">2</span>DASH
                         </span>
                     </div>
-                    <h1 className="text-2xl font-bold text-stone-900 mb-1">Welcome back</h1>
-                    <p className="text-stone-500 text-sm">Sign in to your account</p>
+                    <h1 className="text-2xl font-bold text-stone-900 dark:text-zinc-100 mb-1">Welcome back</h1>
+                    <p className="text-stone-500 dark:text-zinc-400 text-sm">Sign in to your account</p>
                 </div>
 
                 {/* Card */}
-                <div className="bg-white rounded-2xl border border-stone-200 shadow-soft p-6">
+                <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-soft p-6">
                     {/* Google Button */}
                     <a
                         href={googleAuthUrl()}
-                        className="flex items-center justify-center gap-3 w-full h-10 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-sm font-medium text-stone-700 transition-colors mb-4 shadow-soft"
+                        className="flex items-center justify-center gap-3 w-full h-10 rounded-xl border border-stone-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-stone-50 dark:hover:bg-zinc-700 text-sm font-medium text-stone-700 dark:text-zinc-300 transition-colors mb-4 shadow-soft"
                     >
                         <svg className="h-4 w-4" viewBox="0 0 24 24">
                             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -64,16 +64,16 @@ export function LoginPage() {
 
                     <div className="relative mb-4">
                         <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-stone-100" />
+                            <div className="w-full border-t border-stone-100 dark:border-zinc-800" />
                         </div>
                         <div className="relative flex justify-center text-xs">
-                            <span className="bg-white px-3 text-stone-400">or continue with email</span>
+                            <span className="bg-white dark:bg-zinc-900 px-3 text-stone-400 dark:text-zinc-500">or continue with email</span>
                         </div>
                     </div>
 
                     {/* Error */}
                     {error && (
-                        <div className="mb-4 flex items-center gap-2 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-600">
+                        <div className="mb-4 flex items-center gap-2 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 px-4 py-3 text-sm text-red-600 dark:text-red-400">
                             <AlertCircle className="h-4 w-4 shrink-0" />
                             {error}
                         </div>
@@ -82,36 +82,36 @@ export function LoginPage() {
                     {/* Form */}
                     <form onSubmit={handleSubmit} className="space-y-3">
                         <div>
-                            <label className="block text-xs font-medium text-stone-600 mb-1.5">Email</label>
+                            <label className="block text-xs font-medium text-stone-600 dark:text-zinc-400 mb-1.5">Email</label>
                             <div className="relative">
-                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400 dark:text-zinc-500" />
                                 <input
                                     type="email"
                                     required
                                     autoComplete="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full h-10 rounded-xl border border-stone-200 bg-white pl-9 pr-4 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-stone-400 transition-all"
+                                    className="w-full h-10 rounded-xl border border-stone-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 pl-9 pr-4 text-sm text-stone-900 dark:text-zinc-100 placeholder:text-stone-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-stone-400 dark:focus:ring-zinc-600 focus:border-stone-400 dark:focus:border-zinc-600 transition-all"
                                     placeholder="you@example.com"
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-xs font-medium text-stone-600 mb-1.5">Password</label>
+                            <label className="block text-xs font-medium text-stone-600 dark:text-zinc-400 mb-1.5">Password</label>
                             <div className="relative">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400 dark:text-zinc-500" />
                                 <input
                                     type={showPassword ? 'text' : 'password'}
                                     required
                                     autoComplete="current-password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full h-10 rounded-xl border border-stone-200 bg-white pl-9 pr-10 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-stone-400 transition-all"
+                                    className="w-full h-10 rounded-xl border border-stone-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 pl-9 pr-10 text-sm text-stone-900 dark:text-zinc-100 placeholder:text-stone-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-stone-400 dark:focus:ring-zinc-600 focus:border-stone-400 dark:focus:border-zinc-600 transition-all"
                                     placeholder="••••••••"
                                 />
                                 <button type="button" onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600">
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 dark:text-zinc-500 hover:text-stone-600 dark:hover:text-zinc-300">
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
@@ -120,16 +120,16 @@ export function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full h-10 rounded-xl bg-stone-900 text-white text-sm font-medium hover:bg-stone-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mt-2"
+                            className="w-full h-10 rounded-xl bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm font-medium hover:bg-stone-700 dark:hover:bg-zinc-300 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mt-2"
                         >
                             {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Signing in…</> : 'Sign in'}
                         </button>
                     </form>
                 </div>
 
-                <p className="text-center text-sm text-stone-500 mt-5">
+                <p className="text-center text-sm text-stone-500 dark:text-zinc-400 mt-5">
                     Don't have an account?{' '}
-                    <Link to="/signup" className="font-medium text-stone-900 hover:underline">Create one</Link>
+                    <Link to="/signup" className="font-medium text-stone-900 dark:text-zinc-100 hover:underline">Create one</Link>
                 </p>
             </div>
         </div>

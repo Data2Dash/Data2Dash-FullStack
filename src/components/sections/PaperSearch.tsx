@@ -188,11 +188,11 @@ function countActiveFilters(f: FilterState, thisYear: number): number {
 
 function SourceBadge({ source }: { source: string }) {
   const MAP: Record<string, { label: string; cls: string }> = {
-    arxiv: { label: 'arXiv', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    openalex: { label: 'OpenAlex', cls: 'bg-violet-100 text-violet-700 border-violet-200' },
-    local_landmark: { label: 'Landmark', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+    arxiv: { label: 'arXiv', cls: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' },
+    openalex: { label: 'OpenAlex', cls: 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-400 border-violet-200 dark:border-violet-500/20' },
+    local_landmark: { label: 'Landmark', cls: 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20' },
   };
-  const info = MAP[source.toLowerCase()] ?? { label: source, cls: 'bg-stone-100 text-stone-600 border-stone-200' };
+  const info = MAP[source.toLowerCase()] ?? { label: source, cls: 'bg-stone-100 dark:bg-zinc-800 text-stone-600 dark:text-zinc-400 border-stone-200 dark:border-zinc-700' };
   return (
     <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border', info.cls)}>
       {info.label}
@@ -209,10 +209,10 @@ function RelevanceBar({ score }: { score: number }) {
   return (
     <div className="mt-3">
       <div className="flex justify-between mb-1.5">
-        <span className="text-[10px] text-stone-500 font-semibold uppercase tracking-wider">Semantic Relevance</span>
-        <span className="text-[10px] font-bold text-stone-900">{pct}%</span>
+        <span className="text-[10px] text-stone-500 dark:text-zinc-400 font-semibold uppercase tracking-wider">Semantic Relevance</span>
+        <span className="text-[10px] font-bold text-stone-900 dark:text-zinc-100">{pct}%</span>
       </div>
-      <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden">
+      <div className="h-1.5 rounded-full bg-stone-100 dark:bg-zinc-800 overflow-hidden">
         <div className={clsx('h-full rounded-full bg-gradient-to-r', gradient)} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -221,10 +221,10 @@ function RelevanceBar({ score }: { score: number }) {
 
 function Chip({ label, variant }: { label: string; variant: 'blue' | 'purple' | 'green' | 'gray' }) {
   const cls = {
-    blue:   'bg-sage-50 text-sage-700 border-sage-200',
-    purple: 'bg-violet-50 text-violet-700 border-violet-200',
-    green:  'bg-teal-50 text-teal-700 border-teal-200',
-    gray:   'bg-stone-100 text-stone-600 border-stone-200',
+    blue:   'bg-sage-50 dark:bg-emerald-500/10 text-sage-700 dark:text-emerald-400 border-sage-200 dark:border-emerald-500/20',
+    purple: 'bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-200 dark:border-violet-500/20',
+    green:  'bg-teal-50 dark:bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-200 dark:border-teal-500/20',
+    gray:   'bg-stone-100 dark:bg-zinc-800 text-stone-600 dark:text-zinc-400 border-stone-200 dark:border-zinc-700',
   }[variant];
   return (
     <span className={clsx('inline-block px-2 py-1 rounded-full text-[11px] font-semibold border mr-1.5 mb-1.5', cls)}>
@@ -238,7 +238,7 @@ function Chip({ label, variant }: { label: string; variant: 'blue' | 'purple' | 
 function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; query: string }) {
   const isTrendRising = analytics.trend_status?.includes('Rising') || analytics.trend_status?.includes('📈');
   const isTrendDown   = analytics.trend_status?.includes('Declining') || analytics.trend_status?.includes('📉');
-  const trendColor    = isTrendRising ? 'text-emerald-600' : isTrendDown ? 'text-red-500' : 'text-stone-500';
+  const trendColor    = isTrendRising ? 'text-emerald-600 dark:text-emerald-400' : isTrendDown ? 'text-red-500 dark:text-red-400' : 'text-stone-500 dark:text-zinc-400';
 
   // Bar chart helper (CSS only)
   const maxKw = analytics.top_keywords?.[0]?.[1] ?? 1;
@@ -261,53 +261,53 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
       {/* ── Stat cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { icon: <BookOpen className="h-4 w-4 text-sage-600" />, label: 'Total Papers', value: analytics.total_papers?.toLocaleString() ?? '—' },
+          { icon: <BookOpen className="h-4 w-4 text-sage-600 dark:text-emerald-400" />, label: 'Total Papers', value: analytics.total_papers?.toLocaleString() ?? '—' },
           { icon: <Calendar className="h-4 w-4 text-violet-500" />, label: 'Last 30 Days', value: analytics.papers_last_30_days ?? '—' },
           { icon: <TrendingUp className={clsx('h-4 w-4', trendColor)} />, label: 'Trend', value: analytics.trend_status ?? '—', small: true },
           { icon: <Award className="h-4 w-4 text-amber-500" />, label: 'Avg Citations', value: analytics.avg_citations?.toFixed(1) ?? '—' },
         ].map(({ icon, label, value, small }) => (
-          <div key={label} className="bg-white rounded-2xl border border-stone-200 shadow-soft p-4 flex flex-col gap-1">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+          <div key={label} className="bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-soft p-4 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-zinc-500">
               {icon}{label}
             </div>
-            <div className={clsx('font-extrabold text-stone-900', small ? 'text-sm mt-1' : 'text-2xl')}>{value}</div>
+            <div className={clsx('font-extrabold text-stone-900 dark:text-zinc-100', small ? 'text-sm mt-1' : 'text-2xl')}>{value}</div>
           </div>
         ))}
       </div>
 
       {/* ── LLM Insight ─────────────────────────────────────────────── */}
       {analytics.llm_insight && (
-        <div className="relative bg-gradient-to-br from-sage-50 to-white border border-sage-200 rounded-2xl p-5 overflow-hidden shadow-soft">
+        <div className="relative bg-gradient-to-br from-sage-50 dark:from-emerald-500/10 to-white dark:to-zinc-900 border border-sage-200 dark:border-emerald-500/20 rounded-2xl p-5 overflow-hidden shadow-soft">
           <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-sage-500 to-sage-200" />
           <div className="flex items-center gap-2 mb-2 pl-3">
-            <Flame className="h-4 w-4 text-sage-600" />
-            <span className="text-[10px] font-extrabold text-sage-600 uppercase tracking-widest">
+            <Flame className="h-4 w-4 text-sage-600 dark:text-emerald-400" />
+            <span className="text-[10px] font-extrabold text-sage-600 dark:text-emerald-400 uppercase tracking-widest">
               AI Research Landscape · {query}
             </span>
           </div>
-          <p className="pl-3 text-sm text-stone-700 leading-relaxed">{analytics.llm_insight}</p>
+          <p className="pl-3 text-sm text-stone-700 dark:text-zinc-300 leading-relaxed">{analytics.llm_insight}</p>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── Top Keywords ──────────────────────────────────────────── */}
         {analytics.top_keywords?.length > 0 && (
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-soft p-5">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-soft p-5">
             <div className="flex items-center gap-2 mb-4">
               <Tag className="h-4 w-4 text-violet-500" />
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500">Top Research Keywords</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-zinc-400">Top Research Keywords</h3>
             </div>
             <div className="space-y-2">
               {analytics.top_keywords.slice(0, 8).map(([kw, count]) => (
                 <div key={kw} className="flex items-center gap-3">
-                  <span className="text-xs font-medium text-stone-700 w-36 truncate shrink-0">{kw}</span>
-                  <div className="flex-1 h-2 bg-stone-100 rounded-full overflow-hidden">
+                  <span className="text-xs font-medium text-stone-700 dark:text-zinc-300 w-36 truncate shrink-0">{kw}</span>
+                  <div className="flex-1 h-2 bg-stone-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-violet-400 to-violet-600 rounded-full"
                       style={{ width: `${Math.round((count / maxKw) * 100)}%` }}
                     />
                   </div>
-                  <span className="text-[11px] font-bold text-stone-500 w-6 text-right">{count}</span>
+                  <span className="text-[11px] font-bold text-stone-500 dark:text-zinc-400 w-6 text-right">{count}</span>
                 </div>
               ))}
             </div>
@@ -316,10 +316,10 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
 
         {/* ── Top Cited Papers ──────────────────────────────────────── */}
         {analytics.top_cited_papers?.length > 0 && (
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-soft p-5">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-soft p-5">
             <div className="flex items-center gap-2 mb-4">
               <Award className="h-4 w-4 text-amber-500" />
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500">Most Cited Papers</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-zinc-400">Most Cited Papers</h3>
             </div>
             <div className="space-y-3">
               {analytics.top_cited_papers.slice(0, 5).map((p, i) => {
@@ -332,15 +332,15 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
                         href={p.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs font-semibold text-stone-800 group-hover:text-sage-700 line-clamp-2 transition-colors"
+                        className="text-xs font-semibold text-stone-800 dark:text-zinc-200 group-hover:text-sage-700 dark:group-hover:text-emerald-400 line-clamp-2 transition-colors"
                       >
                         {p.title}
                       </a>
-                      <div className="text-[11px] text-stone-400 mt-0.5">
+                      <div className="text-[11px] text-stone-400 dark:text-zinc-500 mt-0.5">
                         {p.authors.slice(0, 2).join(', ')}{p.authors.length > 2 ? ' et al.' : ''} · {p.year}
                       </div>
                     </div>
-                    <span className="shrink-0 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    <span className="shrink-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-0.5 rounded-full">
                       {p.citations.toLocaleString()}
                     </span>
                   </div>
@@ -352,24 +352,24 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
 
         {/* ── Author Impact ─────────────────────────────────────────── */}
         {analytics.top_author_impact?.length > 0 && (
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-soft p-5">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-soft p-5">
             <div className="flex items-center gap-2 mb-4">
-              <Users className="h-4 w-4 text-sage-600" />
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500">Author Impact</h3>
+              <Users className="h-4 w-4 text-sage-600 dark:text-emerald-400" />
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-zinc-400">Author Impact</h3>
             </div>
             <div className="space-y-2">
               {analytics.top_author_impact.slice(0, 7).map((a) => (
                 <div key={a.author} className="flex items-center gap-3">
-                  <span className="text-xs font-medium text-stone-700 w-36 truncate shrink-0">{a.author}</span>
-                  <div className="flex-1 h-2 bg-stone-100 rounded-full overflow-hidden">
+                  <span className="text-xs font-medium text-stone-700 dark:text-zinc-300 w-36 truncate shrink-0">{a.author}</span>
+                  <div className="flex-1 h-2 bg-stone-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-sage-400 to-sage-600 rounded-full"
                       style={{ width: `${Math.round((a.impact_score / maxAuthor) * 100)}%` }}
                     />
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="text-[11px] font-bold text-stone-600">{a.paper_count}p</span>
-                    <span className="text-[10px] text-stone-400 ml-1">{a.citations.toLocaleString()}c</span>
+                    <span className="text-[11px] font-bold text-stone-600 dark:text-zinc-400">{a.paper_count}p</span>
+                    <span className="text-[10px] text-stone-400 dark:text-zinc-500 ml-1">{a.citations.toLocaleString()}c</span>
                   </div>
                 </div>
               ))}
@@ -379,10 +379,10 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
 
         {/* ── Source Distribution ───────────────────────────────────── */}
         {analytics.source_distribution && Object.keys(analytics.source_distribution).length > 0 && (
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-soft p-5">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-soft p-5">
             <div className="flex items-center gap-2 mb-4">
-              <Globe className="h-4 w-4 text-stone-500" />
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500">Source Breakdown</h3>
+              <Globe className="h-4 w-4 text-stone-500 dark:text-zinc-400" />
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-zinc-400">Source Breakdown</h3>
             </div>
             <div className="space-y-3">
               {Object.entries(analytics.source_distribution).map(([src, count]) => {
@@ -393,10 +393,10 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
                 return (
                   <div key={src}>
                     <div className="flex justify-between text-[11px] mb-1">
-                      <span className="font-semibold text-stone-700">{label}</span>
-                      <span className="text-stone-400">{count} ({pct}%)</span>
+                      <span className="font-semibold text-stone-700 dark:text-zinc-300">{label}</span>
+                      <span className="text-stone-400 dark:text-zinc-500">{count} ({pct}%)</span>
                     </div>
-                    <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <div className="h-2 bg-stone-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                       <div className={clsx('h-full rounded-full', colorClass)} style={{ width: `${pct}%` }} />
                     </div>
                   </div>
@@ -408,24 +408,24 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
 
         {/* ── Field Distribution ────────────────────────────────────── */}
         {analytics.field_distribution && Object.keys(analytics.field_distribution).length > 0 && (
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-soft p-5">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-soft p-5">
             <div className="flex items-center gap-2 mb-4">
               <BarChart className="h-4 w-4 text-violet-500" />
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500">Research Fields</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-zinc-400">Research Fields</h3>
             </div>
             <div className="space-y-2">
               {Object.entries(analytics.field_distribution).slice(0, 8).map(([field, count]) => {
                 const maxField = Math.max(...Object.values(analytics.field_distribution));
                 return (
                   <div key={field} className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-stone-700 w-36 truncate shrink-0">{field}</span>
-                    <div className="flex-1 h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <span className="text-xs font-medium text-stone-700 dark:text-zinc-300 w-36 truncate shrink-0">{field}</span>
+                    <div className="flex-1 h-2 bg-stone-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-violet-300 to-violet-500 rounded-full"
                         style={{ width: `${Math.round((count / maxField) * 100)}%` }}
                       />
                     </div>
-                    <span className="text-[11px] font-bold text-stone-500 w-6 text-right">{count}</span>
+                    <span className="text-[11px] font-bold text-stone-500 dark:text-zinc-400 w-6 text-right">{count}</span>
                   </div>
                 );
               })}
@@ -435,10 +435,10 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
 
         {/* ── Year Distribution ─────────────────────────────────────── */}
         {analytics.year_distribution && Object.keys(analytics.year_distribution).length > 0 && (
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-soft p-5">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-700 shadow-soft p-5">
             <div className="flex items-center gap-2 mb-4">
               <BarChart2 className="h-4 w-4 text-amber-500" />
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500">Publications by Year</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-zinc-400">Publications by Year</h3>
             </div>
             <div className="flex items-end gap-1.5 h-24">
               {Object.entries(analytics.year_distribution).slice(-10).map(([year, count]) => {
@@ -451,7 +451,7 @@ function InsightsPanel({ analytics, query }: { analytics: AnalyticsSummary; quer
                       style={{ height: `${pct}%`, minHeight: 4 }}
                       title={`${year}: ${count}`}
                     />
-                    <span className="text-[9px] text-stone-400 rotate-45 origin-bottom-left mt-1 hidden sm:block">{year.slice(2)}</span>
+                    <span className="text-[9px] text-stone-400 dark:text-zinc-500 rotate-45 origin-bottom-left mt-1 hidden sm:block">{year.slice(2)}</span>
                   </div>
                 );
               })}
@@ -482,15 +482,15 @@ function FilterPanel({
       animate={{ opacity: 1, y: 0, scaleY: 1 }}
       exit={{ opacity: 0, y: -8, scaleY: 0.96 }}
       transition={{ duration: 0.18 }}
-      className="origin-top mt-2 p-5 rounded-2xl bg-white border border-stone-200 shadow-panel"
+      className="origin-top mt-2 p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-700 shadow-panel"
     >
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Focus</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">Focus</span>
           <select
             value={filters.viewFilter}
             onChange={e => onChange({ viewFilter: e.target.value as FilterState['viewFilter'] })}
-            className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
+            className="bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
           >
             <option value="all">All ranked</option>
             <option value="top20">Top 20</option>
@@ -500,11 +500,11 @@ function FilterPanel({
           </select>
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Sort by</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">Sort by</span>
           <select
             value={filters.sortMode}
             onChange={e => onChange({ sortMode: e.target.value as FilterState['sortMode'] })}
-            className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
+            className="bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
           >
             <option value="relevance">Relevance (AI ranked)</option>
             <option value="citations">Most cited</option>
@@ -513,11 +513,11 @@ function FilterPanel({
           </select>
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Source</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">Source</span>
           <select
             value={filters.sourceFilter}
             onChange={e => onChange({ sourceFilter: e.target.value as FilterState['sourceFilter'] })}
-            className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
+            className="bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
           >
             <option value="all">All sources</option>
             <option value="arxiv">arXiv only</option>
@@ -529,54 +529,54 @@ function FilterPanel({
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Year from</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">Year from</span>
           <input
             type="number"
             min={1950}
             max={thisYear}
             value={filters.yearMin}
             onChange={e => onChange({ yearMin: parseInt(e.target.value) || 1950 })}
-            className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
+            className="bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Year to</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">Year to</span>
           <input
             type="number"
             min={1950}
             max={thisYear}
             value={filters.yearMax}
             onChange={e => onChange({ yearMax: parseInt(e.target.value) || thisYear })}
-            className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
+            className="bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Min citations</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">Min citations</span>
           <input
             type="number"
             min={0}
             step={10}
             value={filters.minCitations}
             onChange={e => onChange({ minCitations: parseInt(e.target.value) || 0 })}
-            className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
+            className="bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
           />
         </label>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Author contains</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">Author contains</span>
           <input
             type="text"
             value={filters.authorQuery}
             onChange={e => onChange({ authorQuery: e.target.value })}
             placeholder='e.g. "Vaswani" or "Hinton"'
-            className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
+            className="bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 placeholder:text-stone-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-sage-500/50"
           />
         </label>
         {filters.viewFilter === 'high_relevance' && (
           <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">
               Min relevance score ({Math.round(filters.minRelevance * 100)}%)
             </span>
             <input
@@ -592,10 +592,10 @@ function FilterPanel({
         )}
       </div>
 
-      <div className="flex justify-end mt-4 pt-4 border-t border-stone-100">
+      <div className="flex justify-end mt-4 pt-4 border-t border-stone-100 dark:border-zinc-800">
         <button
           onClick={onReset}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 bg-stone-100 dark:bg-zinc-800 hover:bg-stone-200 dark:hover:bg-zinc-700 transition-colors"
         >
           <X className="h-4 w-4" />
           Reset filters
@@ -636,10 +636,10 @@ function PaperCard({
       onClick={onClick}
       className={clsx(
         'group relative rounded-2xl border p-6 cursor-pointer transition-all duration-200',
-        'bg-white shadow-soft',
+        'bg-white dark:bg-zinc-900 shadow-soft',
         isSelected
-          ? 'border-sage-400 ring-2 ring-sage-400/20 shadow-card'
-          : 'border-stone-200 hover:border-stone-300 hover:shadow-card hover:-translate-y-0.5',
+          ? 'border-sage-400 dark:border-emerald-400/40 ring-2 ring-sage-400/20 dark:ring-emerald-400/20 shadow-card'
+          : 'border-stone-200 dark:border-zinc-700 hover:border-stone-300 dark:hover:border-zinc-600 hover:shadow-card hover:-translate-y-0.5',
       )}
     >
       <div className="flex flex-wrap items-start gap-2 mb-3">
@@ -647,8 +647,8 @@ function PaperCard({
           {sources.map(src => <SourceBadge key={src} source={src} />)}
         </div>
         {paper.citations > 0 && (
-          <span className="ml-auto flex items-center gap-1 text-[11px] text-stone-500 font-semibold bg-stone-50 px-2 py-0.5 rounded-full border border-stone-100">
-            <TrendingUp className="h-3 w-3 text-sage-600" />
+          <span className="ml-auto flex items-center gap-1 text-[11px] text-stone-500 dark:text-zinc-400 font-semibold bg-stone-50 dark:bg-zinc-800 px-2 py-0.5 rounded-full border border-stone-100 dark:border-zinc-800">
+            <TrendingUp className="h-3 w-3 text-sage-600 dark:text-emerald-400" />
             {paper.citations.toLocaleString()} citations
           </span>
         )}
@@ -658,43 +658,43 @@ function PaperCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-50 text-stone-600 hover:bg-stone-100 hover:text-stone-900 text-[11px] font-bold border border-stone-200 transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-50 dark:bg-zinc-800 text-stone-600 dark:text-zinc-400 hover:bg-stone-100 dark:hover:bg-zinc-700 hover:text-stone-900 dark:hover:text-zinc-100 text-[11px] font-bold border border-stone-200 dark:border-zinc-700 transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" /> PDF
           </a>
         )}
       </div>
 
-      <h2 className="text-lg font-bold text-stone-900 leading-snug mb-2 pr-6 group-hover:text-sage-700 transition-colors">
+      <h2 className="text-lg font-bold text-stone-900 dark:text-zinc-100 leading-snug mb-2 pr-6 group-hover:text-sage-700 dark:group-hover:text-emerald-400 transition-colors">
         {paper.title}
       </h2>
 
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-stone-500 mb-3 font-medium">
-        <span className="text-sage-600">{authorsStr}</span>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-stone-500 dark:text-zinc-400 mb-3 font-medium">
+        <span className="text-sage-600 dark:text-emerald-400">{authorsStr}</span>
         {(paper.published_date || paper.date) && (
           <>
-            <span className="text-stone-300">•</span>
+            <span className="text-stone-300 dark:text-zinc-600">•</span>
             <span>{(paper.published_date || paper.date).slice(0, 10)}</span>
           </>
         )}
         {paper.venue && (
           <>
-            <span className="text-stone-300">•</span>
+            <span className="text-stone-300 dark:text-zinc-600">•</span>
             <span className="italic">{paper.venue}</span>
           </>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-x-4 text-xs text-stone-500 mb-3 bg-stone-50 px-3 py-1.5 rounded-lg inline-flex">
-        <span>Topic: <b className="text-stone-700">{topicPct}%</b></span>
+      <div className="flex flex-wrap gap-x-4 text-xs text-stone-500 dark:text-zinc-400 mb-3 bg-stone-50 dark:bg-zinc-800 px-3 py-1.5 rounded-lg inline-flex">
+        <span>Topic: <b className="text-stone-700 dark:text-zinc-300">{topicPct}%</b></span>
         {paper.hybrid_relevance_score > 0 && (
-          <span>Hybrid: <b className="text-stone-700">{Math.round(paper.hybrid_relevance_score * 100)}%</b></span>
+          <span>Hybrid: <b className="text-stone-700 dark:text-zinc-300">{Math.round(paper.hybrid_relevance_score * 100)}%</b></span>
         )}
       </div>
 
       {(paper.topic_tags?.length > 0 || paper.inferred_topic_tags?.length > 0) && (
         <div className="flex flex-wrap items-center gap-0.5 mb-3">
-          <Tag className="h-3.5 w-3.5 text-sage-500 mx-1 shrink-0" />
+          <Tag className="h-3.5 w-3.5 text-sage-500 dark:text-emerald-400 mx-1 shrink-0" />
           {(paper.topic_tags || []).slice(0, 5).map(t => (
             <Chip key={t} label={t} variant="green" />
           ))}
@@ -705,7 +705,7 @@ function PaperCard({
       )}
 
       {snippet && (
-        <p className="text-sm text-stone-600 leading-relaxed border-l-2 border-sage-200 pl-4 py-1 italic">
+        <p className="text-sm text-stone-600 dark:text-zinc-400 leading-relaxed border-l-2 border-sage-200 dark:border-emerald-500/20 pl-4 py-1 italic">
           {snippet}
         </p>
       )}
@@ -767,7 +767,7 @@ function PaperDetailModal({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" />
 
       {/* Modal Card */}
       <motion.div
@@ -775,41 +775,41 @@ function PaperDetailModal({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="relative w-[92vw] max-w-7xl h-[88vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row"
+        className="relative w-[92vw] max-w-7xl h-[88vh] bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Left Column: Paper Info ──────────────────────────────── */}
-        <div className="lg:w-[38%] border-b lg:border-b-0 lg:border-r border-stone-200 bg-stone-50 flex flex-col overflow-hidden">
+        <div className="lg:w-[38%] border-b lg:border-b-0 lg:border-r border-stone-200 dark:border-zinc-700 bg-stone-50 dark:bg-zinc-950 flex flex-col overflow-hidden">
           {/* Header */}
           <div className="p-6 pb-4 shrink-0">
             <div className="flex items-start justify-between gap-3 mb-4">
               <div className="flex flex-wrap gap-1.5">
                 {sources.map(src => <SourceBadge key={src} source={src} />)}
                 {paper.citations > 0 && (
-                  <span className="inline-flex items-center gap-1 text-[10px] text-stone-500 font-semibold bg-white px-2 py-0.5 rounded-full border border-stone-200">
-                    <TrendingUp className="h-3 w-3 text-sage-600" />
+                  <span className="inline-flex items-center gap-1 text-[10px] text-stone-500 dark:text-zinc-400 font-semibold bg-white dark:bg-zinc-900 px-2 py-0.5 rounded-full border border-stone-200 dark:border-zinc-700">
+                    <TrendingUp className="h-3 w-3 text-sage-600 dark:text-emerald-400" />
                     {paper.citations.toLocaleString()} citations
                   </span>
                 )}
               </div>
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-xl hover:bg-stone-200 text-stone-400 hover:text-stone-700 transition-colors shrink-0"
+                className="p-1.5 rounded-xl hover:bg-stone-200 dark:hover:bg-zinc-700 text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <h2 className="text-xl font-bold text-stone-900 leading-snug mb-3">
+            <h2 className="text-xl font-bold text-stone-900 dark:text-zinc-100 leading-snug mb-3">
               {paper.title}
             </h2>
-            <p className="text-sm text-sage-600 font-medium mb-1">{authorsStr}</p>
-            <div className="flex flex-wrap gap-x-3 text-xs text-stone-500 font-medium">
+            <p className="text-sm text-sage-600 dark:text-emerald-400 font-medium mb-1">{authorsStr}</p>
+            <div className="flex flex-wrap gap-x-3 text-xs text-stone-500 dark:text-zinc-400 font-medium">
               {(paper.published_date || paper.date) && (
                 <span>{(paper.published_date || paper.date).slice(0, 10)}</span>
               )}
               {paper.venue && (
                 <>
-                  <span className="text-stone-300">•</span>
+                  <span className="text-stone-300 dark:text-zinc-600">•</span>
                   <span className="italic">{paper.venue}</span>
                 </>
               )}
@@ -820,17 +820,17 @@ function PaperDetailModal({
           <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-6 space-y-4">
             {/* Status badge */}
             {isImporting ? (
-              <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs font-semibold animate-pulse">
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-xs font-semibold animate-pulse">
                 <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                 Downloading & indexing PDF…
               </div>
             ) : importError ? (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold">
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-700 dark:text-red-400 text-xs font-semibold">
                 <span className="shrink-0 mt-0.5">⚠️</span>
                 <span className="font-normal leading-snug">{importError}</span>
               </div>
             ) : pdfFileName ? (
-              <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-xs font-semibold">
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
                 ✅ Full PDF indexed · tables, equations & figures available
               </div>
             ) : null}
@@ -840,20 +840,20 @@ function PaperDetailModal({
 
             {/* Scores */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-white rounded-xl border border-stone-200 p-3 text-center">
-                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Topic</p>
-                <p className="text-lg font-extrabold text-stone-900">{Math.round((paper.topic_relevance_score || 0) * 100)}%</p>
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-stone-200 dark:border-zinc-700 p-3 text-center">
+                <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-1">Topic</p>
+                <p className="text-lg font-extrabold text-stone-900 dark:text-zinc-100">{Math.round((paper.topic_relevance_score || 0) * 100)}%</p>
               </div>
-              <div className="bg-white rounded-xl border border-stone-200 p-3 text-center">
-                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Hybrid</p>
-                <p className="text-lg font-extrabold text-stone-900">{Math.round((paper.hybrid_relevance_score || 0) * 100)}%</p>
+              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-stone-200 dark:border-zinc-700 p-3 text-center">
+                <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-1">Hybrid</p>
+                <p className="text-lg font-extrabold text-stone-900 dark:text-zinc-100">{Math.round((paper.hybrid_relevance_score || 0) * 100)}%</p>
               </div>
             </div>
 
             {/* Tags */}
             {(paper.topic_tags?.length > 0 || paper.inferred_topic_tags?.length > 0) && (
               <div>
-                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Topics</p>
+                <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Topics</p>
                 <div className="flex flex-wrap">
                   {(paper.topic_tags || []).slice(0, 6).map(t => <Chip key={t} label={t} variant="green" />)}
                   {(paper.inferred_topic_tags || []).slice(0, 4).map(t => <Chip key={t} label={t} variant="gray" />)}
@@ -864,8 +864,8 @@ function PaperDetailModal({
             {/* Abstract */}
             {paper.abstract && (
               <div>
-                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Abstract</p>
-                <p className="text-sm text-stone-600 leading-relaxed">{paper.abstract}</p>
+                <p className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Abstract</p>
+                <p className="text-sm text-stone-600 dark:text-zinc-400 leading-relaxed">{paper.abstract}</p>
               </div>
             )}
 
@@ -876,7 +876,7 @@ function PaperDetailModal({
                   href={paper.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-700 transition-colors shadow-sm"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-stone-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-semibold hover:bg-stone-700 dark:hover:bg-zinc-300 transition-colors shadow-sm"
                 >
                   <ExternalLink className="h-3.5 w-3.5" /> Open Paper
                 </a>
@@ -885,7 +885,7 @@ function PaperDetailModal({
                 <a
                   href={pdfUrl}
                   download
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-stone-700 text-xs font-semibold border border-stone-200 hover:bg-stone-50 transition-colors"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white dark:bg-zinc-800 text-stone-700 dark:text-zinc-300 text-xs font-semibold border border-stone-200 dark:border-zinc-700 hover:bg-stone-50 dark:hover:bg-zinc-700 transition-colors"
                 >
                   <BookOpen className="h-3.5 w-3.5" /> Download PDF
                 </a>
@@ -907,36 +907,36 @@ function PaperDetailModal({
             availableFilesToCompare={availableFilesToCompare}
             initialMessage={
               isImporting ? (
-                <div className="flex items-center gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
+                <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-500/10 p-4 rounded-xl border border-amber-200 dark:border-amber-500/20">
                   <Loader2 className="h-5 w-5 animate-spin text-amber-600 shrink-0" />
-                  <span className="text-amber-800 font-semibold text-sm">Downloading and indexing PDF — extraction will be ready shortly…</span>
+                  <span className="text-amber-800 dark:text-amber-300 font-semibold text-sm">Downloading and indexing PDF — extraction will be ready shortly…</span>
                 </div>
               ) : importError ? (
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 bg-red-50 p-4 rounded-xl border border-red-200">
+                  <div className="flex items-start gap-3 bg-red-50 dark:bg-red-500/10 p-4 rounded-xl border border-red-200 dark:border-red-500/20">
                     <span className="text-xl shrink-0">⚠️</span>
                     <div>
-                      <p className="text-red-800 font-bold text-sm mb-1">PDF indexing failed</p>
-                      <p className="text-red-700 text-xs leading-relaxed">{importError}</p>
+                      <p className="text-red-800 dark:text-red-300 font-bold text-sm mb-1">PDF indexing failed</p>
+                      <p className="text-red-700 dark:text-red-400 text-xs leading-relaxed">{importError}</p>
                     </div>
                   </div>
-                  <p className="text-sm text-stone-500">
+                  <p className="text-sm text-stone-500 dark:text-zinc-400">
                     I can still answer general questions about{" "}
-                    <strong className="text-stone-700">{paper.title}</strong>{" "}
+                    <strong className="text-stone-700 dark:text-zinc-300">{paper.title}</strong>{" "}
                     based on the abstract and metadata.
                   </p>
                 </div>
               ) : pdfFileName ? (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200 text-xs font-semibold">
+                  <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-500/20 text-xs font-semibold">
                     <span>✅ Full PDF indexed</span>
                     <span className="text-emerald-500">·</span>
                     <span className="font-normal">tables, equations & figures available</span>
                   </div>
-                  <p className="text-sm text-stone-700">I've analysed <strong>{paper.title}</strong>. Ask me to extract a table, explain an equation, or summarise any section.</p>
+                  <p className="text-sm text-stone-700 dark:text-zinc-300">I've analysed <strong>{paper.title}</strong>. Ask me to extract a table, explain an equation, or summarise any section.</p>
                 </div>
               ) : (
-                <>I've analysed <strong className="text-stone-900 font-bold">{paper.title}</strong>. Ask me anything about the methodology, results, or figures.</>
+                <>I've analysed <strong className="text-stone-900 dark:text-zinc-100 font-bold">{paper.title}</strong>. Ask me anything about the methodology, results, or figures.</>
               )
             }
             onSendMessage={onSendMessage}
@@ -1112,7 +1112,7 @@ export function PaperSearch() {
   const funnelRanked    = acct?.final_ranked_count ?? rankedFull.length;
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden bg-stone-50" style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}>
+    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden bg-stone-50 dark:bg-zinc-950" style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}>
 
       <div
         ref={scrollRef}
@@ -1128,21 +1128,21 @@ export function PaperSearch() {
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-4 rounded-3xl bg-sage-100 border border-sage-200 shadow-sm mb-6"
+                className="p-4 rounded-3xl bg-sage-100 dark:bg-emerald-500/15 border border-sage-200 dark:border-emerald-500/20 shadow-sm mb-6"
               >
-                <Sparkles className="h-8 w-8 text-sage-600" />
+                <Sparkles className="h-8 w-8 text-sage-600 dark:text-emerald-400" />
               </motion.div>
             )}
 
             <h1 className={clsx(
-              'font-extrabold text-stone-900 transition-all duration-300 tracking-tight',
+              'font-extrabold text-stone-900 dark:text-zinc-100 transition-all duration-300 tracking-tight',
               !hasSearched ? 'text-5xl mb-4' : 'text-3xl mb-4',
             )}>
               Hybrid AI Paper Search
             </h1>
 
             {!hasSearched && (
-              <p className="text-stone-500 mb-10 max-w-xl text-lg leading-relaxed">
+              <p className="text-stone-500 dark:text-zinc-400 mb-10 max-w-xl text-lg leading-relaxed">
                 Multi-source academic search with LLM query expansion, composite ranking, and smart deduplication.
               </p>
             )}
@@ -1152,13 +1152,13 @@ export function PaperSearch() {
               className={clsx(
                 'relative flex items-center w-full rounded-2xl transition-all duration-300',
                 hasSearched
-                  ? 'bg-white border-stone-200 shadow-sm'
-                  : 'bg-white border-stone-200 shadow-card ring-4 ring-stone-100',
+                  ? 'bg-white dark:bg-zinc-900 border-stone-200 dark:border-zinc-700 shadow-sm'
+                  : 'bg-white dark:bg-zinc-900 border-stone-200 dark:border-zinc-700 shadow-card ring-4 ring-stone-100 dark:ring-zinc-800',
               )}
             >
-              <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-stone-400" />
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-stone-400 dark:text-zinc-500" />
               <input
-                className="w-full h-16 bg-transparent pl-14 pr-16 text-lg text-stone-900 placeholder:text-stone-400 focus:outline-none"
+                className="w-full h-16 bg-transparent pl-14 pr-16 text-lg text-stone-900 dark:text-zinc-100 placeholder:text-stone-400 dark:placeholder:text-zinc-500 focus:outline-none"
                 placeholder="e.g. diffusion models, transformers, GNN…"
                 value={inputValue}
                 onChange={e => setInputValue(e.target.value)}
@@ -1177,12 +1177,12 @@ export function PaperSearch() {
 
             {!hasSearched && (
               <div className="flex flex-wrap items-center justify-center gap-2 mt-8">
-                <span className="text-sm font-semibold text-stone-400 mr-2">Try:</span>
+                <span className="text-sm font-semibold text-stone-400 dark:text-zinc-500 mr-2">Try:</span>
                 {['RAG', 'Transformers', 'GAN', 'BERT', 'diffusion models'].map(q => (
                   <button
                     key={q}
                     onClick={() => { setInputValue(q); }}
-                    className="px-4 py-2 rounded-full border border-stone-200 bg-white text-stone-600 text-sm font-semibold hover:border-sage-300 hover:bg-sage-50 hover:text-sage-700 transition-colors shadow-sm"
+                    className="px-4 py-2 rounded-full border border-stone-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-stone-600 dark:text-zinc-400 text-sm font-semibold hover:border-sage-300 dark:hover:border-emerald-500/30 hover:bg-sage-50 dark:hover:bg-emerald-500/10 hover:text-sage-700 dark:hover:text-emerald-400 transition-colors shadow-sm"
                   >
                     {q}
                   </button>
@@ -1193,35 +1193,35 @@ export function PaperSearch() {
 
           {isLoading && (
             <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <Loader2 className="h-10 w-10 animate-spin text-sage-600" />
-              <p className="text-stone-500 font-medium text-lg">Expanding query & ranking sources…</p>
+              <Loader2 className="h-10 w-10 animate-spin text-sage-600 dark:text-emerald-400" />
+              <p className="text-stone-500 dark:text-zinc-400 font-medium text-lg">Expanding query & ranking sources…</p>
             </div>
           )}
 
           {!isLoading && results && (
             <>
               {(results.expanded_queries?.length > 0 || results.semantic_keywords?.length > 0) && (
-                <div className="mb-6 p-5 rounded-2xl bg-white border border-stone-200 shadow-sm relative overflow-hidden">
+                <div className="mb-6 p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-700 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-sage-400"></div>
-                  <div className="text-[10px] font-extrabold text-sage-600 uppercase tracking-widest mb-3">
+                  <div className="text-[10px] font-extrabold text-sage-600 dark:text-emerald-400 uppercase tracking-widest mb-3">
                     AI Query Expansion
                   </div>
                   {results.expanded_queries?.length > 0 && (
                     <div className="mb-3">
-                      <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mr-3">Variants</span>
+                      <span className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mr-3">Variants</span>
                       {results.expanded_queries.map(q => <Chip key={q} label={q} variant="blue" />)}
                     </div>
                   )}
                   {results.semantic_keywords?.length > 0 && (
                     <div>
-                      <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mr-3">Keywords</span>
+                      <span className="text-[10px] font-bold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mr-3">Keywords</span>
                       {results.semantic_keywords.map(k => <Chip key={k} label={k} variant="purple" />)}
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="flex items-center gap-4 flex-wrap mb-6 text-sm text-stone-500">
+              <div className="flex items-center gap-4 flex-wrap mb-6 text-sm text-stone-500 dark:text-zinc-400">
                 {[
                   { label: 'Retrieved', val: funnelRetrieved },
                   { label: 'Deduped', val: funnelDedup },
@@ -1229,11 +1229,11 @@ export function PaperSearch() {
                   { label: 'Ranked', val: funnelRanked },
                 ].map((item, i, arr) => (
                   <React.Fragment key={item.label}>
-                    <div className="text-center bg-white px-4 py-2 rounded-xl border border-stone-200 shadow-sm min-w-24">
-                      <div className="text-[10px] uppercase tracking-wider font-bold text-stone-400">{item.label}</div>
-                      <div className="font-extrabold text-stone-800 text-lg">{item.val}</div>
+                    <div className="text-center bg-white dark:bg-zinc-900 px-4 py-2 rounded-xl border border-stone-200 dark:border-zinc-700 shadow-sm min-w-24">
+                      <div className="text-[10px] uppercase tracking-wider font-bold text-stone-400 dark:text-zinc-500">{item.label}</div>
+                      <div className="font-extrabold text-stone-800 dark:text-zinc-200 text-lg">{item.val}</div>
                     </div>
-                    {i < arr.length - 1 && <ChevronRight className="h-5 w-5 text-stone-300" />}
+                    {i < arr.length - 1 && <ChevronRight className="h-5 w-5 text-stone-300 dark:text-zinc-600" />}
                   </React.Fragment>
                 ))}
               </div>
@@ -1244,14 +1244,14 @@ export function PaperSearch() {
                   { label: 'This view', val: viewList.length },
                   ...(Object.entries(results.source_counts || {}).map(([k, v]) => ({ label: k, val: v }))),
                 ].map(pill => (
-                  <div key={pill.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-100 border border-stone-200 text-xs text-stone-600 font-medium">
-                    {pill.label} <span className="font-bold text-stone-900 bg-white px-1.5 rounded text-[10px] shadow-sm">{pill.val}</span>
+                  <div key={pill.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-100 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 text-xs text-stone-600 dark:text-zinc-400 font-medium">
+                    {pill.label} <span className="font-bold text-stone-900 dark:text-zinc-100 bg-white dark:bg-zinc-900 px-1.5 rounded text-[10px] shadow-sm">{pill.val}</span>
                   </div>
                 ))}
               </div>
 
               {/* ── Tab Switcher ───────────────────────────────────────── */}
-              <div className="flex items-center gap-1 mb-6 p-1 bg-stone-100 rounded-xl border border-stone-200 self-start">
+              <div className="flex items-center gap-1 mb-6 p-1 bg-stone-100 dark:bg-zinc-800 rounded-xl border border-stone-200 dark:border-zinc-700 self-start">
                 {(['papers', 'insights'] as const).map(tab => (
                   <button
                     key={tab}
@@ -1259,12 +1259,12 @@ export function PaperSearch() {
                     className={clsx(
                       'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all',
                       resultsTab === tab
-                        ? 'bg-white text-stone-900 shadow-sm border border-stone-200'
-                        : 'text-stone-500 hover:text-stone-700',
+                        ? 'bg-white dark:bg-zinc-900 text-stone-900 dark:text-zinc-100 shadow-sm border border-stone-200 dark:border-zinc-700'
+                        : 'text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300',
                     )}
                   >
                     {tab === 'papers'
-                      ? <><BookOpen className="h-3.5 w-3.5" />Results <span className="ml-1 text-[10px] bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-full font-black">{viewList.length}</span></>
+                      ? <><BookOpen className="h-3.5 w-3.5" />Results <span className="ml-1 text-[10px] bg-stone-200 dark:bg-zinc-700 text-stone-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-full font-black">{viewList.length}</span></>
                       : <><BarChart2 className="h-3.5 w-3.5" />Insights</>}
                   </button>
                 ))}
@@ -1283,8 +1283,8 @@ export function PaperSearch() {
                     filterOpen
                       ? 'bg-sage-600 border-sage-600 text-white shadow-md'
                       : activeFilterCount > 0
-                        ? 'bg-white border-sage-300 text-sage-700 hover:border-sage-400'
-                        : 'bg-white border-stone-200 text-stone-700 hover:border-stone-300 hover:bg-stone-50',
+                        ? 'bg-white dark:bg-zinc-900 border-sage-300 dark:border-emerald-500/30 text-sage-700 dark:text-emerald-400 hover:border-sage-400 dark:hover:border-emerald-500/40'
+                        : 'bg-white dark:bg-zinc-900 border-stone-200 dark:border-zinc-700 text-stone-700 dark:text-zinc-300 hover:border-stone-300 dark:hover:border-zinc-600 hover:bg-stone-50 dark:hover:bg-zinc-800',
                   )}
                 >
                   <SlidersHorizontal className="h-4 w-4" />
@@ -1292,7 +1292,7 @@ export function PaperSearch() {
                   {activeFilterCount > 0 && (
                     <span className={clsx(
                       'ml-2 px-2 py-0.5 rounded-full text-[10px] font-black',
-                      filterOpen ? 'bg-white/20 text-white' : 'bg-sage-100 text-sage-700',
+                      filterOpen ? 'bg-white/20 text-white' : 'bg-sage-100 dark:bg-emerald-500/15 text-sage-700 dark:text-emerald-400',
                     )}>
                       {activeFilterCount} Active
                     </span>
@@ -1312,7 +1312,7 @@ export function PaperSearch() {
               </div>
 
               <div className="flex items-center justify-between gap-3 mb-5 mt-2">
-                <span className="text-sm font-semibold text-stone-500">
+                <span className="text-sm font-semibold text-stone-500 dark:text-zinc-400">
                   {viewList.length === 0
                     ? `No results match current filters`
                     : `Showing ${pageStart + 1}–${Math.min(pageStart + perPage, viewList.length)} of ${viewList.length} results`
@@ -1325,7 +1325,7 @@ export function PaperSearch() {
                       setPerPage(Number(e.target.value) as 10 | 20 | 50);
                       setUiPage(1);
                     }}
-                    className="bg-white border border-stone-200 rounded-xl px-3 py-1.5 text-sm font-medium text-stone-700 focus:outline-none focus:ring-2 focus:ring-sage-500/30 cursor-pointer shadow-sm"
+                    className="bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-sage-500/30 cursor-pointer shadow-sm"
                   >
                     {ITEMS_PER_PAGE_OPTIONS.map(n => (
                       <option key={n} value={n}>{n} per page</option>
@@ -1340,14 +1340,14 @@ export function PaperSearch() {
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="text-center py-20 bg-white rounded-3xl border border-stone-200 shadow-sm"
+                      className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-stone-200 dark:border-zinc-700 shadow-sm"
                     >
-                      <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Filter className="h-8 w-8 text-stone-400" />
+                      <div className="w-16 h-16 bg-stone-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Filter className="h-8 w-8 text-stone-400 dark:text-zinc-500" />
                       </div>
-                      <h3 className="font-bold text-stone-800 text-lg mb-1">No matches found</h3>
-                      <p className="font-medium text-stone-500 mb-6">Try adjusting your filters to see more results.</p>
-                      <button onClick={resetFilters} className="px-6 py-2 bg-stone-100 text-stone-700 font-bold rounded-xl hover:bg-stone-200 transition-colors">
+                      <h3 className="font-bold text-stone-800 dark:text-zinc-200 text-lg mb-1">No matches found</h3>
+                      <p className="font-medium text-stone-500 dark:text-zinc-400 mb-6">Try adjusting your filters to see more results.</p>
+                      <button onClick={resetFilters} className="px-6 py-2 bg-stone-100 dark:bg-zinc-800 text-stone-700 dark:text-zinc-300 font-bold rounded-xl hover:bg-stone-200 dark:hover:bg-zinc-700 transition-colors">
                         Clear Filters
                       </button>
                     </motion.div>
@@ -1369,24 +1369,24 @@ export function PaperSearch() {
                   <button
                     onClick={() => setUiPage(p => Math.max(1, p - 1))}
                     disabled={safeUiPage <= 1}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 text-sm font-bold hover:bg-stone-50 hover:border-stone-300 disabled:opacity-40 shadow-sm transition-all"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-stone-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-stone-700 dark:text-zinc-300 text-sm font-bold hover:bg-stone-50 dark:hover:bg-zinc-800 hover:border-stone-300 dark:hover:border-zinc-600 disabled:opacity-40 shadow-sm transition-all"
                   >
                     <ChevronLeft className="h-4 w-4" /> Previous
                   </button>
-                  <span className="text-sm text-stone-500 font-bold tracking-wide">
+                  <span className="text-sm text-stone-500 dark:text-zinc-400 font-bold tracking-wide">
                     Page {safeUiPage} of {maxPage}
                   </span>
                   <button
                     onClick={() => setUiPage(p => Math.min(maxPage, p + 1))}
                     disabled={safeUiPage >= maxPage}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 text-sm font-bold hover:bg-stone-50 hover:border-stone-300 disabled:opacity-40 shadow-sm transition-all"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-stone-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-stone-700 dark:text-zinc-300 text-sm font-bold hover:bg-stone-50 dark:hover:bg-zinc-800 hover:border-stone-300 dark:hover:border-zinc-600 disabled:opacity-40 shadow-sm transition-all"
                   >
                     Next <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
               )}
 
-              <p className="text-center text-xs font-semibold text-stone-400 pb-8 tracking-wide uppercase">
+              <p className="text-center text-xs font-semibold text-stone-400 dark:text-zinc-500 pb-8 tracking-wide uppercase">
                 Powered by Hybrid Search · arXiv &amp; OpenAlex · Llama Models
               </p>
             </>

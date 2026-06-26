@@ -61,7 +61,7 @@ function ToastItem({ notification: n, onDismiss }: ToastItemProps) {
   return (
     <div
       className={clsx(
-        'relative flex items-start gap-3 w-80 bg-white rounded-2xl shadow-xl border border-stone-100 p-4 overflow-hidden',
+        'relative flex items-start gap-3 w-80 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-stone-100 dark:border-zinc-800 p-4 overflow-hidden',
         'transition-all duration-300 ease-out',
         visible && !leaving
           ? 'opacity-100 translate-x-0'
@@ -76,13 +76,13 @@ function ToastItem({ notification: n, onDismiss }: ToastItemProps) {
       {icon}
 
       <div className="flex-1 min-w-0 pl-1">
-        <p className="text-xs font-bold text-stone-900 leading-snug">{n.title}</p>
-        <p className="text-xs text-stone-500 leading-relaxed mt-0.5 line-clamp-2">{n.message}</p>
+        <p className="text-xs font-bold text-stone-900 dark:text-zinc-100 leading-snug">{n.title}</p>
+        <p className="text-xs text-stone-500 dark:text-zinc-400 leading-relaxed mt-0.5 line-clamp-2">{n.message}</p>
       </div>
 
       <button
         onClick={dismiss}
-        className="shrink-0 p-0.5 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+        className="shrink-0 p-0.5 rounded-lg hover:bg-stone-100 dark:hover:bg-zinc-700 text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
       >
         <X className="h-3.5 w-3.5" />
       </button>
