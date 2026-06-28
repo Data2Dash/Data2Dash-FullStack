@@ -12,7 +12,10 @@ import numpy as np
 import requests as req_lib
 
 import edge_tts
-from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
+try:
+    from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
+except ImportError:
+    from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
 
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
