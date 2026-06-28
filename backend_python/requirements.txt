@@ -19,6 +19,7 @@ sentence-transformers
 arxiv
 wikipedia
 ddgs
+duckduckgo-search
 pypdf
 edge-tts
 pydub
