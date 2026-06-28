@@ -28,6 +28,7 @@ PyMuPDF
 Pillow
 email-validator
 sqlalchemy
+psycopg2-binary
 httpx
 python-jose
 bcrypt
