@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 
+function uuid(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return uuid();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 export interface Message {
   role: 'user' | 'ai';
   content: string;
@@ -24,7 +32,7 @@ interface ChatStore {
 
 export const useChatStore = create<ChatStore>((set) => ({
   messages: [],
-  sessionId: crypto.randomUUID(),
+  sessionId: uuid(),
   pdfLoaded: false,
   pdfName: null,
   refreshTrigger: 0,
@@ -35,7 +43,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   triggerRefresh: () => set((s) => ({ refreshTrigger: s.refreshTrigger + 1 })),
   resetChat: () => set({ 
     messages: [], 
-    sessionId: crypto.randomUUID(),
+    sessionId: uuid(),
     pdfLoaded: false,
     pdfName: null,
     refreshTrigger: 0

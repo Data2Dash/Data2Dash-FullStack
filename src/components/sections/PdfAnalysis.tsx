@@ -379,7 +379,12 @@ export function PdfAnalysis() {
     const accepted: { file: File; entry: PdfFile }[] = [];
     for (const f of arr) {
       const sizeStr = (f.size / (1024 * 1024)).toFixed(1) + ' MB';
-      const sessionId = crypto.randomUUID();
+      const sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = (Math.random() * 16) | 0;
+            return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+          });
       const base: Omit<PdfFile, 'status'> = {
         id: `${f.name}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         name: f.name,
