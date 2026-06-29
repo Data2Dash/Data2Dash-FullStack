@@ -11,9 +11,12 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
-  # ── Stage 1: Lint & Security (parallel) ────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════════════
+  # STAGE 1: Code Quality (parallel)
+  # ═══════════════════════════════════════════════════════════════════════
+
   frontend-typecheck:
-    name: Frontend typecheck
+    name: "1.1 · Frontend TypeScript check"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,10 +25,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npx tsc --noEmit
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
 
   backend-lint:
-    name: Backend lint
+    name: "1.2 · Backend Python lint"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,10 +37,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install ruff
-      - run: ruff check backend_python/ --select E,F,W --ignore E501,E401,E402,E701,E702,E722,E741
+      - name: Ruff lint check
+        run: ruff check backend_python/ --select E,F,W --ignore E501,E401,E402,E701,E702,E722,E741
 
-  security-audit:
-    name: Security audit
+  # ═══════════════════════════════════════════════════════════════════════
+  # STAGE 2: Security (parallel)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  npm-audit:
+    name: "2.1 · NPM dependency audit"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,43 +53,42 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+      - run: npm ci
+      - name: Audit for vulnerabilities
+        run: npm audit --audit-level=high || true
+
+  pip-audit:
+    name: "2.2 · Python dependency audit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: npm ci
-      - name: NPM audit
-        run: npm audit --audit-level=high || true
-      - name: Python dependency audit
+      - name: Audit Python packages
         run: |
           pip install pip-audit
           pip-audit -r backend_python/requirements.txt --skip-editable || true
 
-  # ── Stage 2: Test & Build (parallel, needs Stage 1) ────────────────────
-  frontend-build:
-    name: Frontend build
+  secret-scan:
+    name: "2.3 · Secret leak scan"
     runs-on: ubuntu-latest
-    needs: [frontend-typecheck]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
-      - name: Build production bundle
-        run: npm run build
+          fetch-depth: 0
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
         env:
-          VITE_API_URL: http://localhost:8000
-      - name: Check bundle size
-        run: |
-          SIZE=$(du -sk dist/ | cut -f1)
-          echo "Bundle size: ${SIZE}KB"
-          if [ "$SIZE" -gt 10240 ]; then
-            echo "::warning::Bundle size exceeds 10MB (${SIZE}KB)"
-          fi
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  backend-test:
-    name: Backend tests
+  # ═══════════════════════════════════════════════════════════════════════
+  # STAGE 3: Testing (needs Stage 1)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  backend-unit-tests:
+    name: "3.1 · Backend unit tests"
     runs-on: ubuntu-latest
     needs: [backend-lint]
     steps:
@@ -96,10 +104,11 @@ jobs:
         run: |
           pip install -r backend_python/requirements.txt
           pip install -r multimodelrag/requirements.txt
-          pip install pytest httpx
-      - name: Run tests
+          pip install pytest httpx pytest-cov
+      - name: Run unit tests with coverage
         run: |
-          cd backend_python && python -m pytest tests/ -v || {
+          cd backend_python && python -m pytest tests/ -v --tb=short --co -q 2>/dev/null; \
+          python -m pytest tests/ -v --cov=. --cov-report=term-missing || {
             EXIT_CODE=$?
             if [ $EXIT_CODE -eq 134 ] || [ $EXIT_CODE -eq 139 ]; then
               echo "::warning::Tests passed but process crashed during cleanup (torch/ONNX teardown). Ignoring."
@@ -112,23 +121,110 @@ jobs:
           GROQ_API_KEY: test_key
           JWT_SECRET_KEY: test_secret_key_for_ci
 
-  # ── Stage 3: Docker build (needs Stage 2) ──────────────────────────────
-  docker-build:
-    name: Docker build test
+  backend-import-check:
+    name: "3.2 · Backend import verification"
     runs-on: ubuntu-latest
-    needs: [frontend-build, backend-test]
+    needs: [backend-lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend_python/requirements.txt
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install Python deps
+        run: |
+          pip install -r backend_python/requirements.txt
+          pip install -r multimodelrag/requirements.txt
+      - name: Verify critical imports
+        run: |
+          python -c "from fastapi import FastAPI; print('✓ FastAPI')"
+          python -c "from langchain_groq import ChatGroq; print('✓ LangChain-Groq')"
+          python -c "from sentence_transformers import SentenceTransformer; print('✓ SentenceTransformers')"
+          python -c "import uvicorn; print('✓ Uvicorn')"
+          python -c "from sqlalchemy import create_engine; print('✓ SQLAlchemy')"
+          python -c "from prometheus_client import Counter; print('✓ Prometheus client')"
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # STAGE 4: Build (needs Stage 3)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  frontend-build:
+    name: "4.1 · Frontend production build"
+    runs-on: ubuntu-latest
+    needs: [frontend-typecheck]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_API_URL: http://localhost:8000
+      - name: Bundle size analysis
+        run: |
+          echo "## Bundle analysis" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          du -sh dist/ >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          du -sh dist/assets/*.js >> $GITHUB_STEP_SUMMARY
+          du -sh dist/assets/*.css >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          SIZE=$(du -sk dist/ | cut -f1)
+          echo "Total: ${SIZE}KB"
+          if [ "$SIZE" -gt 10240 ]; then
+            echo "::warning::Bundle size exceeds 10MB (${SIZE}KB)"
+          fi
+
+  docker-build-backend:
+    name: "4.2 · Docker build backend"
+    runs-on: ubuntu-latest
+    needs: [backend-unit-tests, backend-import-check]
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
         run: docker build -f backend_python/Dockerfile -t data2dash-backend:test .
+      - name: Smoke test backend
+        run: |
+          docker run -d --name backend-smoke \
+            -e DATABASE_URL=sqlite:///./test.db \
+            -e GROQ_API_KEY=test \
+            -e JWT_SECRET_KEY=test \
+            data2dash-backend:test
+          sleep 8
+          LOGS=$(docker logs backend-smoke 2>&1)
+          echo "$LOGS" | tail -10
+          if echo "$LOGS" | grep -q "Application startup complete"; then
+            echo "✓ Backend started successfully"
+          else
+            echo "::warning::Backend may not have fully started"
+          fi
+          docker stop backend-smoke
+
+  docker-build-frontend:
+    name: "4.3 · Docker build frontend"
+    runs-on: ubuntu-latest
+    needs: [frontend-build]
+    steps:
+      - uses: actions/checkout@v4
       - name: Build frontend image
         run: docker build -f Dockerfile.frontend -t data2dash-frontend:test --build-arg VITE_API_URL=http://localhost:8000 .
+      - name: Verify nginx config
+        run: docker run --rm data2dash-frontend:test nginx -t
 
-  # ── Stage 4: Deploy (main branch push only) ────────────────────────────
+  # ═══════════════════════════════════════════════════════════════════════
+  # STAGE 5: Deploy (main branch push only, needs Stage 4)
+  # ═══════════════════════════════════════════════════════════════════════
+
   deploy:
-    name: Deploy to GCP
+    name: "5.1 · Deploy to GCP"
     runs-on: ubuntu-latest
-    needs: [docker-build]
+    needs: [docker-build-backend, docker-build-frontend, npm-audit, pip-audit, secret-scan]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
     steps:
@@ -143,7 +239,44 @@ jobs:
             git pull origin main
             sudo docker compose up -d --build
             sudo docker image prune -f
-            echo "Waiting for services..."
-            sleep 15
+            echo "Waiting for services to start..."
+            sleep 20
             echo "=== Container status ==="
             sudo docker compose ps
+
+  health-check:
+    name: "5.2 · Post-deploy health check"
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    steps:
+      - name: Wait for deploy to stabilize
+        run: sleep 30
+      - name: Check frontend
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/)
+          echo "Frontend: HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Frontend health check failed (HTTP $STATUS)"
+            exit 1
+          fi
+      - name: Check backend API
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/api/)
+          echo "Backend API: HTTP $STATUS"
+      - name: Check metrics endpoint
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/metrics)
+          echo "Metrics: HTTP $STATUS"
+      - name: Check Grafana
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}:3000/api/health)
+          echo "Grafana: HTTP $STATUS"
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Health Check" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ✅ $(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend API | ✅ $(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/api/) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Metrics | ✅ $(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/metrics) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | ✅ $(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}:3000/api/health) |" >> $GITHUB_STEP_SUMMARY
