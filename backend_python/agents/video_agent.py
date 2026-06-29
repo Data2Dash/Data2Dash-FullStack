@@ -444,7 +444,13 @@ IMAGE PROMPTS: Make each completely unique and specific. No text in images.
         clips = []
         for img_path, audio_path, dur in slide_data:
             ac = AudioFileClip(audio_path)
-            vc = ImageClip(img_path).with_duration(dur).with_audio(ac)
+            ic = ImageClip(img_path)
+            try:
+                vc = ic.with_duration(dur).with_audio(ac)
+            except AttributeError:
+                ic.duration = dur
+                ic = ic.set_audio(ac)
+                vc = ic
             clips.append(vc)
 
         out_path = os.path.join(work_dir, "output.mp4")
