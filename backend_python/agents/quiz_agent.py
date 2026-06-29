@@ -52,7 +52,8 @@ class QuizAgent:
         splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
         splits = splitter.split_documents(docs)
 
-        vectorstore = Chroma.from_documents(documents=splits, embedding=_get_embeddings())
+        ids = [f"{pdf_path}_{i}" for i in range(len(splits))]
+        vectorstore = Chroma.from_documents(documents=splits, embedding=_get_embeddings(), ids=ids)
         self._vectorstores[pdf_path] = vectorstore
         return vectorstore
 
