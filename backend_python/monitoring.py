@@ -1,6 +1,5 @@
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from fastapi import Response
-import time
 
 # ── Counters ─────────────────────────────────────────────────────────────────
 REQUEST_COUNT = Counter(
