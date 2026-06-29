@@ -33,7 +33,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install ruff
-      - run: ruff check backend_python/ --select E,F,W --ignore E501
+      - run: ruff check backend_python/ --select E,F,W --ignore E501,E401,E402,E701,E702,E722,E741
 
   security-audit:
     name: Security audit

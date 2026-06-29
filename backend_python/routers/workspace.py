@@ -45,7 +45,7 @@ def get_workspace_summary(
     ws = _get_workspace(current_user, db)
 
     file_count = db.query(File).filter(
-        File.user_id == current_user.id, File.is_deleted == False
+        File.user_id == current_user.id, not File.is_deleted
     ).count()
 
     session_count = db.query(ChatSession).filter(
@@ -54,7 +54,7 @@ def get_workspace_summary(
 
     recent_files = (
         db.query(File)
-        .filter(File.user_id == current_user.id, File.is_deleted == False)
+        .filter(File.user_id == current_user.id, not File.is_deleted)
         .order_by(File.uploaded_at.desc())
         .limit(5)
         .all()
@@ -102,7 +102,7 @@ def list_files(
     """
     q = db.query(File).filter(
         File.user_id == current_user.id,
-        File.is_deleted == False,
+        not File.is_deleted,
     )
     if file_type:
         q = q.filter(File.file_type == file_type.lower())
@@ -183,7 +183,7 @@ def get_session_messages(
     ).first()
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     messages = []
     for m in s.messages:
         # Map backend SenderType to frontend roles: user → user, agent/system → ai

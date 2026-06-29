@@ -2,7 +2,6 @@
 Documents Router — /api/documents
 Full CRUD for user manuscript library, JWT-protected.
 """
-import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel

@@ -5,7 +5,6 @@ Covers auth, users, files, chat sessions/messages, search history, and workspace
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Any, Dict
 from datetime import datetime
-import uuid
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────

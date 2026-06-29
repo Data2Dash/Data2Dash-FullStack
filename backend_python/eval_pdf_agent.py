@@ -15,7 +15,6 @@ Metrics computed:
 
 import os
 import sys
-import re
 import time
 import argparse
 from typing import Dict, List, Any, Optional

@@ -3,13 +3,12 @@ import re
 import math
 import requests
 import concurrent.futures
-from langchain_groq import ChatGroq
 from langchain_community.tools import ArxivQueryRun, WikipediaQueryRun, DuckDuckGoSearchRun
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 import arxiv
 from collections import defaultdict, Counter
-from typing import List, Dict, Optional
+from typing import List, Dict
 from datetime import datetime, timedelta
 from .model_router import get_groq_llm
 

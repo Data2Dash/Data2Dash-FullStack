@@ -15,7 +15,7 @@ import logging
 import os
 from typing import Optional
 
-from groq import Groq, RateLimitError, AuthenticationError, APIConnectionError, APIStatusError
+from groq import Groq, RateLimitError
 
 logger = logging.getLogger(__name__)
 

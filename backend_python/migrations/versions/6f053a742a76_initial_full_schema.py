@@ -1,7 +1,7 @@
 """initial_full_schema
 
 Revision ID: 6f053a742a76
-Revises: 
+Revises:
 Create Date: 2026-04-25 16:17:09.681691
 """
 from typing import Sequence, Union

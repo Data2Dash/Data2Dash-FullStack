@@ -13,7 +13,6 @@ except Exception:
     pass
 
 import shutil
-import asyncio
 import uuid
 import re
 import json
@@ -64,7 +63,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 # Auth imports
 from database import engine, Base, get_db
 from models import (
-    File as FileModel, SearchHistory, Workspace, User, 
+    File as FileModel, SearchHistory, Workspace, User,
     ChatSession, ChatMessage, SenderType, SessionType
 )
 from routers.auth import router as auth_router, get_current_user, bearer_scheme
@@ -422,7 +421,7 @@ def search(request: SearchRequest, db: Session = Depends(get_db)):
 
 @app.post("/api/chat/ai")
 def chat_ai(
-    request: AIChatRequest, 
+    request: AIChatRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -472,7 +471,7 @@ def chat_ai(
         _pdf = get_pdf_agent() if GROQ_API_KEY else None
         result = agent.run(request.query, real_history, sid, pdf_agent_instance=_pdf)
         print("ChatAgent.run completed successfully.")
-        
+
         # 4. Save AI Message
         ai_msg = ChatMessage(
             session_id=sid,
@@ -481,7 +480,7 @@ def chat_ai(
             message_metadata={"sources": result.get("sources", [])}
         )
         db.add(ai_msg)
-        
+
         # Update session timestamp
         session.last_message_at = func.now()
         db.commit()
@@ -1340,19 +1339,19 @@ def get_figures(session_id: str, filename: str, pdf_url: Optional[str] = None):
     agent = get_vision_agent()
     safe_filename = re.sub(r'[<>:"|?*]', '_', filename)
     pdf_path = os.path.join("data", "uploads", session_id, safe_filename)
-    
+
     try:
         ensure_pdf_exists(pdf_path, pdf_url)
-    except Exception as e:
+    except Exception:
         # Ignore ensure error if file actually exists, else raise
         if not os.path.exists(pdf_path):
             raise
-    
+
     if not os.path.exists(pdf_path):
         raise HTTPException(status_code=404, detail="PDF not found")
-        
+
     figure_paths = agent.extract_figures(pdf_path, session_id)
-    
+
     # Convert local paths to accessible URLs
     figure_urls = []
     for path in figure_paths:
@@ -1362,7 +1361,7 @@ def get_figures(session_id: str, filename: str, pdf_url: Optional[str] = None):
             "url": f"{BACKEND_URL}/api/uploads/{rel_path}",
             "local_path": path
         })
-        
+
     return {"figures": figure_urls}
 
 class SummarizeRequest(BaseModel):
@@ -1391,7 +1390,6 @@ class KGChatRequest(BaseModel):
 
 import requests
 
-import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -1441,7 +1439,7 @@ def extract_summary(request: SummarizeRequest):
     try:
         pdf_path = os.path.join("data", "uploads", request.session_id, request.filename)
         ensure_pdf_exists(pdf_path, request.pdf_url)
-            
+
         output_path = f"{pdf_path}.summary.json"
 
         if not os.path.exists(output_path):
@@ -1482,7 +1480,7 @@ def extract_summary(request: SummarizeRequest):
                 try: os.remove(output_path)
                 except OSError: pass
             raise HTTPException(status_code=500, detail=f"Summary output was unreadable; please retry. ({e})")
-            
+
         report_url = None
         if data.get("report_pdf_base64"):
             report_filename = f"{request.filename}.report.pdf"
@@ -1490,7 +1488,7 @@ def extract_summary(request: SummarizeRequest):
             with open(report_path, "wb") as f:
                 f.write(base64.b64decode(data["report_pdf_base64"]))
             report_url = f"{BACKEND_URL}/api/uploads/{request.session_id}/{report_filename}"
-            
+
         return {
             "title": data.get("title", "Summary"),
             "summary": data.get("summary_markdown", "Could not generate summary."),
@@ -1506,12 +1504,12 @@ def compare_papers(request: CompareRequest):
     try:
         pdf_path_a = os.path.join("data", "uploads", request.session_id_a, request.filename_a)
         ensure_pdf_exists(pdf_path_a, request.pdf_url_a)
-        
+
         pdf_path_b = os.path.join("data", "uploads", request.session_id_b, request.filename_b)
         ensure_pdf_exists(pdf_path_b, request.pdf_url_b)
-            
+
         output_path = f"{pdf_path_a}.compare.json"
-        
+
         if not os.path.exists(output_path):
             cmd = [
                 sys.executable,
@@ -1522,14 +1520,14 @@ def compare_papers(request: CompareRequest):
                 os.getenv("GROQ_API_KEY", ""),
                 "llama-3.3-70b-versatile"
             ]
-            
+
             proc = subprocess.run(cmd, capture_output=True, text=True)
             if proc.returncode != 0:
                 raise HTTPException(status_code=500, detail=f"Comparison failed: {proc.stderr}")
-                
+
         with open(output_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            
+
         return data
     except HTTPException:
         raise
@@ -1541,10 +1539,10 @@ def generate_kg(request: KGRequest):
     try:
         pdf_path = os.path.join("data", "uploads", request.session_id, request.filename)
         ensure_pdf_exists(pdf_path, request.pdf_url)
-            
+
         output_path = f"{pdf_path}.kg.html"
         vstore_path = f"{pdf_path}.vstore.json"
-        
+
         if not os.path.exists(output_path) or not os.path.exists(vstore_path):
             cmd = [
                 sys.executable,
@@ -1553,7 +1551,7 @@ def generate_kg(request: KGRequest):
                 output_path
             ]
             proc = subprocess.run(cmd, capture_output=True, text=True)
-            
+
             # parse json output
             try:
                 res = json.loads(proc.stdout)
@@ -1565,7 +1563,7 @@ def generate_kg(request: KGRequest):
         # Serve the HTML file from the static uploads mount
         rel_path = output_path.replace("\\", "/").replace("data/uploads/", "").lstrip("/")
         url = f"{BACKEND_URL}/api/uploads/{rel_path}"
-        
+
         return {"url": url}
     except HTTPException:
         raise
@@ -1582,7 +1580,7 @@ def generate_kg_chat(request: KGChatRequest):
             # But let's at least make sure the pdf itself is downloaded
             ensure_pdf_exists(pdf_path, request.pdf_url)
             raise HTTPException(status_code=404, detail="KG Vectors not found. Please extract the graph first.")
-            
+
         cmd = [
             sys.executable,
             RUN_KG_QUERY_SCRIPT,
@@ -1592,7 +1590,7 @@ def generate_kg_chat(request: KGChatRequest):
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             raise HTTPException(status_code=500, detail=f"KG Chat failed: {proc.stderr}")
-            
+
         try:
             # We expect the inner pipeline script to cleanly dump raw JSON
             res = json.loads(proc.stdout)
@@ -1601,7 +1599,7 @@ def generate_kg_chat(request: KGChatRequest):
             return {"answer": res.get("answer", "No answer generated.")}
         except json.JSONDecodeError:
             raise HTTPException(status_code=500, detail=f"Invalid response from query engine: {proc.stdout}")
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1613,7 +1611,7 @@ async def analyze_figure(request: FigureAnalysisRequest):
     agent = get_vision_agent()
     if not os.path.exists(request.image_path):
         raise HTTPException(status_code=404, detail="Image not found")
-        
+
     try:
         analysis = await agent.analyze_figure(request.image_path, request.query)
         return {"analysis": analysis}
@@ -1757,15 +1755,15 @@ async def generate_podcast_task(task_id: str, request: PodcastRequest):
     """Background task for podcast generation"""
     try:
         agent = get_podcast_agent()
-        
+
         def progress_callback(message: str, progress: int):
             podcast_tasks[task_id]["progress"] = progress
             podcast_tasks[task_id]["message"] = message
-        
+
         # Update status to processing
         podcast_tasks[task_id]["status"] = "processing"
         podcast_tasks[task_id]["message"] = "Starting podcast generation..."
-        
+
         # Generate podcast
         audio_bytes = await agent.generate_podcast(
             paper_content=request.paper_content,
@@ -1774,13 +1772,13 @@ async def generate_podcast_task(task_id: str, request: PodcastRequest):
             add_music=request.add_music,
             progress_callback=progress_callback
         )
-        
+
         # Store result
         podcast_tasks[task_id]["status"] = "completed"
         podcast_tasks[task_id]["progress"] = 100
         podcast_tasks[task_id]["message"] = "Podcast generated successfully!"
         podcast_tasks[task_id]["audio_data"] = audio_bytes
-        
+
     except Exception as e:
         podcast_tasks[task_id]["status"] = "failed"
         podcast_tasks[task_id]["message"] = f"Error: {str(e)}"
@@ -1790,7 +1788,7 @@ async def generate_podcast_task(task_id: str, request: PodcastRequest):
 async def generate_podcast(request: PodcastRequest, background_tasks: BackgroundTasks):
     """Start podcast generation as a background task"""
     task_id = str(uuid.uuid4())
-    
+
     # Initialize task
     podcast_tasks[task_id] = {
         "status": "pending",
@@ -1798,10 +1796,10 @@ async def generate_podcast(request: PodcastRequest, background_tasks: Background
         "message": "Podcast generation queued",
         "audio_data": None
     }
-    
+
     # Add to background tasks
     background_tasks.add_task(generate_podcast_task, task_id, request)
-    
+
     return PodcastResponse(
         task_id=task_id,
         status="pending",
@@ -1813,9 +1811,9 @@ def get_podcast_status(task_id: str):
     """Get the status of a podcast generation task"""
     if task_id not in podcast_tasks:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     task = podcast_tasks[task_id]
-    
+
     return PodcastStatusResponse(
         task_id=task_id,
         status=task["status"],
@@ -1829,15 +1827,15 @@ def download_podcast(task_id: str):
     """Download the generated podcast audio"""
     if task_id not in podcast_tasks:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     task = podcast_tasks[task_id]
-    
+
     if task["status"] != "completed":
         raise HTTPException(status_code=400, detail="Podcast not ready yet")
-    
+
     if not task["audio_data"]:
         raise HTTPException(status_code=500, detail="Audio data not found")
-    
+
     return Response(
         content=task["audio_data"],
         media_type="audio/mpeg",
@@ -1940,22 +1938,22 @@ def search_youtube_videos(request: YouTubeSearchRequest):
         )
     try:
         agent = get_youtube_agent()
-        
+
         # Search for videos
         videos = agent.search_videos(
             paper_title=request.paper_title,
             paper_abstract=request.paper_abstract,
             max_results=request.max_results
         )
-        
+
         # Build query for response
         query_used = agent._build_search_query(request.paper_title, request.paper_abstract)
-        
+
         return YouTubeSearchResponse(
             videos=[YouTubeVideo(**video) for video in videos],
             query_used=query_used
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,0 +1,280 @@
+[Docs](https://console.groq.com/docs/overview)
+[Login](https://console.groq.com/home)
+[Playground](https://console.groq.com/playground)
+[API Keys](https://console.groq.com/keys)
+[Dashboard](https://console.groq.com/dashboard)
+[Docs](https://console.groq.com/docs)
+[Log In](https://console.groq.com/login)
+
+## Documentation
+
+[Docs](https://console.groq.com/docs/overview)
+[API Reference](https://console.groq.com/docs/api-reference)
+
+### Getting Started
+[Overview](https://console.groq.com/docs/overview)
+[Quickstart](https://console.groq.com/docs/quickstart)
+[Models](https://console.groq.com/docs/models)
+[OpenAI Compatibility](https://console.groq.com/docs/openai)
+[Responses API](https://console.groq.com/docs/responses-api)
+[Rate Limits](https://console.groq.com/docs/rate-limits)
+[Templates](https://console.groq.com/docs/examples)
+[API Reference](https://console.groq.com/docs/api-reference)
+
+### Core Features
+[Text Generation](https://console.groq.com/docs/text-chat)
+[Speech to Text](https://console.groq.com/docs/speech-to-text)
+[Text to Speech](https://console.groq.com/docs/text-to-speech)
+[Orpheus](https://console.groq.com/docs/text-to-speech/orpheus)
+[OCR and Image Recognition](https://console.groq.com/docs/vision)
+[Reasoning](https://console.groq.com/docs/reasoning)
+[Content Moderation](https://console.groq.com/docs/content-moderation)
+[Structured Outputs](https://console.groq.com/docs/structured-outputs)
+[Prompt Caching](https://console.groq.com/docs/prompt-caching)
+
+### Tools & Integrations
+[Tool Use](https://console.groq.com/docs/tool-use/overview)
+[Overview](https://console.groq.com/docs/tool-use/overview)
+[Groq Built-In Tools](https://console.groq.com/docs/tool-use/built-in-tools)
+[Web Search](https://console.groq.com/docs/tool-use/built-in-tools/web-search)
+[Visit Website](https://console.groq.com/docs/tool-use/built-in-tools/visit-website)
+[Browser Automation](https://console.groq.com/docs/tool-use/built-in-tools/browser-automation)
+[Code Execution](https://console.groq.com/docs/tool-use/built-in-tools/code-execution)
+[Wolfram Alpha](https://console.groq.com/docs/tool-use/built-in-tools/wolfram-alpha)
+[Browser Search (GPT OSS Models)](https://console.groq.com/docs/tool-use/built-in-tools/browser-search)
+[Remote Tools and MCP](https://console.groq.com/docs/tool-use/remote-mcp)
+[Connectors](https://console.groq.com/docs/tool-use/remote-mcp/connectors)
+[Local Tool Calling](https://console.groq.com/docs/tool-use/local-tool-calling)
+[Integrations Catalog](https://console.groq.com/docs/integrations)
+[Coding with Groq](https://console.groq.com/docs/coding-with-groq)
+[Factory Droid](https://console.groq.com/docs/coding-with-groq/factory-droid)
+[OpenCode](https://console.groq.com/docs/coding-with-groq/opencode)
+[Kilo Code](https://console.groq.com/docs/coding-with-groq/kilo-code)
+[Roo Code](https://console.groq.com/docs/coding-with-groq/roo-code)
+[Cline](https://console.groq.com/docs/coding-with-groq/cline)
+
+### Compound (Agentic AI)
+[Overview](https://console.groq.com/docs/compound)
+[Built-In Tools](https://console.groq.com/docs/compound/built-in-tools)
+[Systems](https://console.groq.com/docs/compound/systems)
+[Use Cases](https://console.groq.com/docs/compound/use-cases)
+
+### Guides
+[Prompting Guide](https://console.groq.com/docs/prompting)
+[Basics](https://console.groq.com/docs/prompting)
+[Patterns](https://console.groq.com/docs/prompting/patterns)
+[Model Migration](https://console.groq.com/docs/prompting/model-migration)
+[Assistant Message Prefilling](https://console.groq.com/docs/prefilling)
+
+### Service Tiers
+[Service Tiers](https://console.groq.com/docs/service-tiers)
+[Performance Tier](https://console.groq.com/docs/performance-tier)
+[Flex Processing](https://console.groq.com/docs/flex-processing)
+[Batch Processing](https://console.groq.com/docs/batch)
+
+### Advanced
+[LoRA Inference](https://console.groq.com/docs/lora)
+
+### Production Readiness
+[Production Checklist](https://console.groq.com/docs/production-readiness/production-ready-checklist)
+[Optimizing Latency](https://console.groq.com/docs/production-readiness/optimizing-latency)
+[Security Onboarding](https://console.groq.com/docs/production-readiness/security-onboarding)
+[Prometheus Metrics](https://console.groq.com/docs/prometheus-metrics)
+
+### Account and Console
+[Spend Limits](https://console.groq.com/docs/spend-limits)
+[Projects](https://console.groq.com/docs/projects)
+[Model Permissions](https://console.groq.com/docs/model-permissions)
+[Billing FAQs](https://console.groq.com/docs/billing-faqs)
+[Your Data](https://console.groq.com/docs/your-data)
+
+### Developer Resources
+[SDK Libraries](https://console.groq.com/docs/libraries)
+[Groq Badge](https://console.groq.com/docs/badge)
+[Developer Community](https://community.groq.com)
+[OpenBench](https://openbench.dev)
+[Error Codes](https://console.groq.com/docs/errors)
+[Changelog](https://console.groq.com/docs/changelog)
+
+### Legal
+[Policies & Notices](https://console.groq.com/docs/legal)
+[Docs](https://console.groq.com/docs/overview)
+[API Reference](https://console.groq.com/docs/api-reference)
+
+### Getting Started
+[Overview](https://console.groq.com/docs/overview)
+[Quickstart](https://console.groq.com/docs/quickstart)
+[Models](https://console.groq.com/docs/models)
+[OpenAI Compatibility](https://console.groq.com/docs/openai)
+[Responses API](https://console.groq.com/docs/responses-api)
+[Rate Limits](https://console.groq.com/docs/rate-limits)
+[Templates](https://console.groq.com/docs/examples)
+[API Reference](https://console.groq.com/docs/api-reference)
+
+### Core Features
+[Text Generation](https://console.groq.com/docs/text-chat)
+[Speech to Text](https://console.groq.com/docs/speech-to-text)
+[Text to Speech](https://console.groq.com/docs/text-to-speech)
+[Orpheus](https://console.groq.com/docs/text-to-speech/orpheus)
+[OCR and Image Recognition](https://console.groq.com/docs/vision)
+[Reasoning](https://console.groq.com/docs/reasoning)
+[Content Moderation](https://console.groq.com/docs/content-moderation)
+[Structured Outputs](https://console.groq.com/docs/structured-outputs)
+[Prompt Caching](https://console.groq.com/docs/prompt-caching)
+
+### Tools & Integrations
+[Tool Use](https://console.groq.com/docs/tool-use/overview)
+[Overview](https://console.groq.com/docs/tool-use/overview)
+[Groq Built-In Tools](https://console.groq.com/docs/tool-use/built-in-tools)
+[Web Search](https://console.groq.com/docs/tool-use/built-in-tools/web-search)
+[Visit Website](https://console.groq.com/docs/tool-use/built-in-tools/visit-website)
+[Browser Automation](https://console.groq.com/docs/tool-use/built-in-tools/browser-automation)
+[Code Execution](https://console.groq.com/docs/tool-use/built-in-tools/code-execution)
+[Wolfram Alpha](https://console.groq.com/docs/tool-use/built-in-tools/wolfram-alpha)
+[Browser Search (GPT OSS Models)](https://console.groq.com/docs/tool-use/built-in-tools/browser-search)
+[Remote Tools and MCP](https://console.groq.com/docs/tool-use/remote-mcp)
+[Connectors](https://console.groq.com/docs/tool-use/remote-mcp/connectors)
+[Local Tool Calling](https://console.groq.com/docs/tool-use/local-tool-calling)
+[Integrations Catalog](https://console.groq.com/docs/integrations)
+[Coding with Groq](https://console.groq.com/docs/coding-with-groq)
+[Factory Droid](https://console.groq.com/docs/coding-with-groq/factory-droid)
+[OpenCode](https://console.groq.com/docs/coding-with-groq/opencode)
+[Kilo Code](https://console.groq.com/docs/coding-with-groq/kilo-code)
+[Roo Code](https://console.groq.com/docs/coding-with-groq/roo-code)
+[Cline](https://console.groq.com/docs/coding-with-groq/cline)
+
+### Compound (Agentic AI)
+[Overview](https://console.groq.com/docs/compound)
+[Built-In Tools](https://console.groq.com/docs/compound/built-in-tools)
+[Systems](https://console.groq.com/docs/compound/systems)
+[Use Cases](https://console.groq.com/docs/compound/use-cases)
+
+### Guides
+[Prompting Guide](https://console.groq.com/docs/prompting)
+[Basics](https://console.groq.com/docs/prompting)
+[Patterns](https://console.groq.com/docs/prompting/patterns)
+[Model Migration](https://console.groq.com/docs/prompting/model-migration)
+[Assistant Message Prefilling](https://console.groq.com/docs/prefilling)
+
+### Service Tiers
+[Service Tiers](https://console.groq.com/docs/service-tiers)
+[Performance Tier](https://console.groq.com/docs/performance-tier)
+[Flex Processing](https://console.groq.com/docs/flex-processing)
+[Batch Processing](https://console.groq.com/docs/batch)
+
+### Advanced
+[LoRA Inference](https://console.groq.com/docs/lora)
+
+### Production Readiness
+[Production Checklist](https://console.groq.com/docs/production-readiness/production-ready-checklist)
+[Optimizing Latency](https://console.groq.com/docs/production-readiness/optimizing-latency)
+[Security Onboarding](https://console.groq.com/docs/production-readiness/security-onboarding)
+[Prometheus Metrics](https://console.groq.com/docs/prometheus-metrics)
+
+### Account and Console
+[Spend Limits](https://console.groq.com/docs/spend-limits)
+[Projects](https://console.groq.com/docs/projects)
+[Model Permissions](https://console.groq.com/docs/model-permissions)
+[Billing FAQs](https://console.groq.com/docs/billing-faqs)
+[Your Data](https://console.groq.com/docs/your-data)
+
+### Developer Resources
+[SDK Libraries](https://console.groq.com/docs/libraries)
+[Groq Badge](https://console.groq.com/docs/badge)
+[Developer Community](https://community.groq.com)
+[OpenBench](https://openbench.dev)
+[Error Codes](https://console.groq.com/docs/errors)
+[Changelog](https://console.groq.com/docs/changelog)
+
+### Legal
+[Policies & Notices](https://console.groq.com/docs/legal)
+
+# Supported Models
+
+Explore all available models on GroqCloud.
+
+## [Featured Models and Systems](https://console.groq.com/docs/models#featured-models-and-systems)
+
+[Featured Models and Systems](https://console.groq.com/docs/models#featured-models-and-systems)
+[Groq CompoundGroq Compound is an AI system powered by openly available models that intelligently and selectively uses built-in tools to answer user queries, including web search and code execution.Token Speed~450 tpsModalitiesCapabilities](https://console.groq.com/docs/compound/systems/compound)
+
+### Groq Compound
+Groq Compound is an AI system powered by openly available models that intelligently and selectively uses built-in tools to answer user queries, including web search and code execution.
+[OpenAI GPT-OSS 120BGPT-OSS 120B is OpenAI's flagship open-weight language model with 120 billion parameters, built in browser search and code execution, and reasoning capabilities.Token Speed~500 tpsModalitiesCapabilities](https://console.groq.com/docs/model/openai/gpt-oss-120b)
+
+### OpenAI GPT-OSS 120B
+GPT-OSS 120B is OpenAI's flagship open-weight language model with 120 billion parameters, built in browser search and code execution, and reasoning capabilities.
+
+## [Production Models](https://console.groq.com/docs/models#production-models)
+[Production Models](https://console.groq.com/docs/models#production-models)
+Note: Production models are intended for use in your production environments. They meet or exceed our high standards for speed, quality, and reliability. Read more [here](https://console.groq.com/docs/deprecations).
+[Llama 3.1 8B](https://console.groq.com/docs/model/llama-3.1-8b-instant)
+[Llama 3.3 70B](https://console.groq.com/docs/model/llama-3.3-70b-versatile)
+[GPT OSS 120B](https://console.groq.com/docs/model/openai/gpt-oss-120b)
+[GPT OSS 20B](https://console.groq.com/docs/model/openai/gpt-oss-20b)
+[Whisper](https://console.groq.com/docs/model/whisper-large-v3)
+[Whisper Large V3 Turbo](https://console.groq.com/docs/model/whisper-large-v3-turbo)
+
+## [Production Systems](https://console.groq.com/docs/models#production-systems)
+[Production Systems](https://console.groq.com/docs/models#production-systems)
+Systems are a collection of models and tools that work together to answer a user query.
+[Compound](https://console.groq.com/docs/compound/systems/compound)
+[Compound Mini](https://console.groq.com/docs/compound/systems/compound-mini)
+[Learn More About Agentic ToolingDiscover how to build powerful applications with real-time web search and code execution](https://console.groq.com/docs/agentic-tooling)
+
+## [Preview Models](https://console.groq.com/docs/models#preview-models)
+[Preview Models](https://console.groq.com/docs/models#preview-models)
+Note: Preview models are intended for evaluation purposes only and should not be used in production environments as they may be discontinued at short notice. Read more about deprecations [here](https://console.groq.com/docs/deprecations).
+[Canopy Labs Orpheus Arabic Saudi](https://console.groq.com/docs/model/canopylabs/orpheus-arabic-saudi)
+[Canopy Labs Orpheus V1 English](https://console.groq.com/docs/model/canopylabs/orpheus-v1-english)
+[Llama 4 Scout 17B 16E](https://console.groq.com/docs/model/meta-llama/llama-4-scout-17b-16e-instruct)
+[Llama Prompt Guard 2 22M](https://console.groq.com/docs/model/meta-llama/llama-prompt-guard-2-22m)
+[Prompt Guard 2 86M](https://console.groq.com/docs/model/meta-llama/llama-prompt-guard-2-86m)
+[Safety GPT OSS 20B](https://console.groq.com/docs/model/openai/gpt-oss-safeguard-20b)
+[Qwen3-32B](https://console.groq.com/docs/model/qwen/qwen3-32b)
+
+## [Deprecated Models](https://console.groq.com/docs/models#deprecated-models)
+[Deprecated Models](https://console.groq.com/docs/models#deprecated-models)
+Deprecated models are models that are no longer supported or will no longer be supported in the future. See our deprecation guidelines and deprecated models [here](https://console.groq.com/docs/deprecations).
+
+## [Get All Available Models](https://console.groq.com/docs/models#get-all-available-models)
+[Get All Available Models](https://console.groq.com/docs/models#get-all-available-models)
+Hosted models are directly accessible through the GroqCloud Models API endpoint using the model IDs mentioned above. You can use the https://api.groq.com/openai/v1/models endpoint to return a JSON list of all active models:
+
+```
+https://api.groq.com/openai/v1/models
+```
+
+
+```
+curl -X GET "https://api.groq.com/openai/v1/models" \ -H "Authorization: Bearer $GROQ_API_KEY" \ -H "Content-Type: application/json"
+```
+
+
+```
+curl -X GET "https://api.groq.com/openai/v1/models" \ -H "Authorization: Bearer $GROQ_API_KEY" \ -H "Content-Type: application/json"
+```
+
+
+```
+import Groq from "groq-sdk"; const groq = new Groq({ apiKey: process.env.GROQ_API_KEY }); const getModels = async () => { return await groq.models.list(); }; getModels().then((models) => { // console.log(models); });
+```
+
+
+```
+import Groq from "groq-sdk"; const groq = new Groq({ apiKey: process.env.GROQ_API_KEY }); const getModels = async () => { return await groq.models.list(); }; getModels().then((models) => { // console.log(models); });
+```
+
+
+```
+import requests import os api_key = os.environ.get("GROQ_API_KEY") url = "https://api.groq.com/openai/v1/models" headers = { "Authorization": f"Bearer {api_key}", "Content-Type": "application/json" } response = requests.get(url, headers=headers) print(response.json())
+```
+
+
+```
+import requests import os api_key = os.environ.get("GROQ_API_KEY") url = "https://api.groq.com/openai/v1/models" headers = { "Authorization": f"Bearer {api_key}", "Content-Type": "application/json" } response = requests.get(url, headers=headers) print(response.json())
+```
+
+### Was this page helpful?
+
+#### On this page

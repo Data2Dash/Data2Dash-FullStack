@@ -1,4 +1,3 @@
-from langchain_groq import ChatGroq
 from langchain_community.utilities import ArxivAPIWrapper, WikipediaAPIWrapper
 from langchain_community.tools import ArxivQueryRun, WikipediaQueryRun, DuckDuckGoSearchRun
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -100,7 +99,7 @@ class ChatAgent:
 
         system_prompt = """\
 You are a precise, document-grounded research assistant. Your ONLY job is to answer \
-the user's question using the RETRIEVED CONTENT provided below. 
+the user's question using the RETRIEVED CONTENT provided below.
 
 STRICT RULES — follow every rule exactly:
 1. Answer ONLY from the RETRIEVED CONTENT. Do NOT add facts from memory or training data.

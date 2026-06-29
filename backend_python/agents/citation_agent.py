@@ -2,7 +2,6 @@ import json
 import requests
 import re
 from typing import List, Dict, Any
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from .model_router import get_groq_llm
 
@@ -23,7 +22,7 @@ class CitationAgent:
             "Keep it concise (3-6 words). "
             "Respond strictly in JSON format with a single key 'query'."
         )
-        
+
         try:
             prompt = ChatPromptTemplate.from_messages([
                 ("system", system_prompt),
@@ -31,7 +30,7 @@ class CitationAgent:
             ])
             chain = prompt | self.llm
             result = chain.invoke({"sentence": sentence})
-            
+
             # Use regex to find JSON block in case there's conversational filler
             response_text = result.content.strip()
             json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
@@ -43,9 +42,9 @@ class CitationAgent:
         except Exception as e:
             print(f"[CitationAgent] Error parsing LLM query: {e}")
             llm_query = sentence[:50]
-            
+
         print(f"[CitationAgent] LLM formulated query: '{llm_query}'")
-        
+
         def fetch_from_arxiv(search_query: str) -> List[Dict[str, Any]]:
             try:
                 import arxiv
@@ -87,17 +86,17 @@ class CitationAgent:
                 papers = data.get("data", [])
                 if not papers:
                     return fetch_from_arxiv(search_query)
-                
+
                 # Format nicely
                 formatted_papers = []
                 for p in papers:
                     authors = [a.get("name") for a in p.get("authors", [])]
                     doi = p.get("externalIds", {}).get("DOI", "")
-                    
+
                     paper_url = p.get("url")
                     if not paper_url and doi:
                         paper_url = f"https://doi.org/{doi}"
-                        
+
                     formatted_papers.append({
                         "id": p.get("paperId", ""),
                         "title": p.get("title", "Unknown Title"),
@@ -111,10 +110,10 @@ class CitationAgent:
                 print(f"[CitationAgent] Semantic Scholar error for query '{search_query}': {e}")
                 print(f"[CitationAgent] Falling back to ArXiv for query '{search_query}'...")
                 return fetch_from_arxiv(search_query)
-                
+
         # Phase 1: Search using LLM-extracted technical keywords
         papers = fetch_papers(llm_query)
-        
+
         # Phase 2: Fallback if first search yields no results
         if not papers:
             print(f"[CitationAgent] LLM query '{llm_query}' returned 0 results. Trying fallback...")
@@ -125,7 +124,7 @@ class CitationAgent:
             stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'of', 'this', 'that', 'it', 'is', 'are', 'was', 'were', 'be', 'been'}
             important_words = [w for w in words if w.lower() not in stop_words]
             fallback_query = " ".join(important_words[:6])
-            
+
             if fallback_query and fallback_query.lower() != llm_query.lower():
                 print(f"[CitationAgent] Fallback query: '{fallback_query}'")
                 papers = fetch_papers(fallback_query)
@@ -139,7 +138,7 @@ class CitationAgent:
             "Respond strictly in JSON format with keys: 'apa', 'mla', 'chicago', 'bibtex'."
         )
         user_prompt = f"Title: {title}\nAuthors: {', '.join(authors)}\nYear: {year}\nURL: {url}"
-        
+
         try:
             prompt = ChatPromptTemplate.from_messages([
                 ("system", system_prompt),
@@ -147,15 +146,15 @@ class CitationAgent:
             ])
             chain = prompt | self.llm
             result = chain.invoke({"user_prompt": user_prompt})
-            
+
             response_text = result.content.strip()
             if response_text.startswith("```json"):
                 response_text = response_text[7:]
             if response_text.endswith("```"):
                 response_text = response_text[:-3]
-                
+
             parsed = json.loads(response_text)
-            
+
             return {
                 "apa": parsed.get("apa", ""),
                 "mla": parsed.get("mla", ""),

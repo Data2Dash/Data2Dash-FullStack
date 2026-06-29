@@ -3,9 +3,14 @@ AI Video Presenter Agent
 Generates cinematic presentation videos from document text.
 Follows the same async-task pattern as PodcastAgent.
 """
-import os, re, asyncio, tempfile, textwrap, math, uuid, urllib.parse
+import os
+import re
+import asyncio
+import tempfile
+import textwrap
+import urllib.parse
 from io import BytesIO
-from typing import List, Tuple, Optional, Callable
+from typing import List, Optional, Callable
 
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np

@@ -99,7 +99,7 @@ class PDFAgent:
     def get_uploaded_pdfs(self, session_id):
         """Return list of uploaded PDFs for the session"""
         return self.uploaded_files.get(session_id, [])
-        
+
     def get_response(self, query, session_id):
         """Get response based on PDF content, including markdown for equations and tables.
 
@@ -130,10 +130,10 @@ class PDFAgent:
                     "tables": [],
                     "sources": [],
                 }
-        
+
         try:
             system = self.systems[session_id]
-            
+
             # Map query intent to mode
             q_lower = query.lower()
             mode = "standard"
@@ -161,7 +161,7 @@ class PDFAgent:
             if result.get("mode"):
                 response["mode"] = result["mode"]
             return response
-            
+
         except Exception as e:
             return {
                 "answer": f"❌ Error generating response: {e}",
@@ -174,20 +174,20 @@ class PDFAgent:
         """Clear the context for a session"""
         if session_id in self.systems:
             del self.systems[session_id]
-        
+
         if session_id in self.uploaded_files:
             del self.uploaded_files[session_id]
-            
+
         temp_dir = f"data/multimodel_temp/{session_id}"
         if os.path.exists(temp_dir):
             try:
                 shutil.rmtree(temp_dir)
-            except Exception as e:
+            except Exception:
                 pass
-        
+
         export_dir = f"data/multimodel_exports/{session_id}"
         if os.path.exists(export_dir):
             try:
                 shutil.rmtree(export_dir)
-            except Exception as e:
+            except Exception:
                 pass
