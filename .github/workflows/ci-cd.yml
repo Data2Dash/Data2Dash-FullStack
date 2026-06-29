@@ -215,7 +215,8 @@ jobs:
       - name: Build frontend image
         run: docker build -f Dockerfile.frontend -t data2dash-frontend:test --build-arg VITE_API_URL=http://localhost:8000 .
       - name: Verify nginx config
-        run: docker run --rm data2dash-frontend:test nginx -t
+        run: |
+          docker run --rm --add-host=backend:127.0.0.1 data2dash-frontend:test nginx -t
 
   # ═══════════════════════════════════════════════════════════════════════
   # STAGE 5: Deploy (main branch push only, needs Stage 4)
