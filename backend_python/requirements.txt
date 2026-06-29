@@ -37,4 +37,3 @@ alembic
 python-dotenv
 reportlab
 moviepy
-marker-pdf
