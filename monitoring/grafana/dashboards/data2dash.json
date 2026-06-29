@@ -1,122 +1,97 @@
 {
-  "dashboard": {
-    "id": null,
-    "uid": "data2dash-overview",
-    "title": "Data2Dash Overview",
-    "tags": ["data2dash"],
-    "timezone": "browser",
-    "refresh": "30s",
-    "time": { "from": "now-1h", "to": "now" },
-    "panels": [
-      {
-        "id": 1,
-        "title": "Request rate",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-        "targets": [{
-          "expr": "sum(rate(data2dash_requests_total[1m]))",
-          "legendFormat": "req/s"
-        }]
-      },
-      {
-        "id": 2,
-        "title": "Error rate (5xx)",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-        "targets": [{
-          "expr": "sum(rate(data2dash_requests_total{status=~\"5..\"}[1m]))",
-          "legendFormat": "5xx/s"
-        }]
-      },
-      {
-        "id": 3,
-        "title": "Model errors by agent",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-        "targets": [{
-          "expr": "sum by (agent, error_type) (rate(data2dash_model_errors_total[5m]))",
-          "legendFormat": "{{agent}} - {{error_type}}"
-        }]
-      },
-      {
-        "id": 4,
-        "title": "Rate limit hits",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-        "targets": [{
-          "expr": "sum by (model) (increase(data2dash_rate_limit_hits_total[5m]))",
-          "legendFormat": "{{model}}"
-        }]
-      },
-      {
-        "id": 5,
-        "title": "Request latency (p95)",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-        "targets": [{
-          "expr": "histogram_quantile(0.95, sum(rate(data2dash_request_latency_seconds_bucket[5m])) by (le))",
-          "legendFormat": "p95"
-        }, {
-          "expr": "histogram_quantile(0.50, sum(rate(data2dash_request_latency_seconds_bucket[5m])) by (le))",
-          "legendFormat": "p50"
-        }]
-      },
-      {
-        "id": 6,
-        "title": "Model latency by agent",
-        "type": "timeseries",
-        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
-        "targets": [{
-          "expr": "histogram_quantile(0.95, sum(rate(data2dash_model_latency_seconds_bucket[5m])) by (le, agent))",
-          "legendFormat": "{{agent}} p95"
-        }]
-      },
-      {
-        "id": 7,
-        "title": "Active requests",
-        "type": "gauge",
-        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
-        "targets": [{
-          "expr": "data2dash_active_requests"
-        }]
-      },
-      {
-        "id": 8,
-        "title": "Total model requests",
-        "type": "stat",
-        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 24 },
-        "targets": [{
-          "expr": "sum(data2dash_model_requests_total)"
-        }]
-      },
-      {
-        "id": 9,
-        "title": "Total model errors",
-        "type": "stat",
-        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 24 },
-        "targets": [{
-          "expr": "sum(data2dash_model_errors_total)"
-        }],
-        "fieldConfig": {
-          "defaults": {
-            "color": { "mode": "fixed", "fixedColor": "red" }
-          }
-        }
-      },
-      {
-        "id": 10,
-        "title": "Total rate limit hits",
-        "type": "stat",
-        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 24 },
-        "targets": [{
-          "expr": "sum(data2dash_rate_limit_hits_total)"
-        }],
-        "fieldConfig": {
-          "defaults": {
-            "color": { "mode": "fixed", "fixedColor": "orange" }
-          }
-        }
-      }
-    ]
-  }
+  "id": null,
+  "uid": "data2dash-overview",
+  "title": "Data2Dash Overview",
+  "tags": ["data2dash"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "sum(rate(data2dash_requests_total[1m]))", "legendFormat": "req/s", "datasource": { "type": "prometheus" } }]
+    },
+    {
+      "id": 2,
+      "title": "Error rate (5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "sum(rate(data2dash_requests_total{status=~\"5..\"}[1m]))", "legendFormat": "5xx/s", "datasource": { "type": "prometheus" } }]
+    },
+    {
+      "id": 3,
+      "title": "Model errors by agent",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "sum by (agent, error_type) (rate(data2dash_model_errors_total[5m]))", "legendFormat": "{{agent}} - {{error_type}}", "datasource": { "type": "prometheus" } }]
+    },
+    {
+      "id": 4,
+      "title": "Rate limit hits",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "sum by (model) (increase(data2dash_rate_limit_hits_total[5m]))", "legendFormat": "{{model}}", "datasource": { "type": "prometheus" } }]
+    },
+    {
+      "id": 5,
+      "title": "Request latency (p95 / p50)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(data2dash_request_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "datasource": { "type": "prometheus" } },
+        { "expr": "histogram_quantile(0.50, sum(rate(data2dash_request_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p50", "datasource": { "type": "prometheus" } }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Model latency by agent",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(data2dash_model_latency_seconds_bucket[5m])) by (le, agent))", "legendFormat": "{{agent}} p95", "datasource": { "type": "prometheus" } }]
+    },
+    {
+      "id": 7,
+      "title": "Active requests",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "data2dash_active_requests", "datasource": { "type": "prometheus" } }]
+    },
+    {
+      "id": 8,
+      "title": "Total model requests",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "sum(data2dash_model_requests_total)", "datasource": { "type": "prometheus" } }]
+    },
+    {
+      "id": 9,
+      "title": "Total model errors",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "sum(data2dash_model_errors_total)", "datasource": { "type": "prometheus" } }],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } }
+    },
+    {
+      "id": 10,
+      "title": "Total rate limit hits",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [{ "expr": "sum(data2dash_rate_limit_hits_total)", "datasource": { "type": "prometheus" } }],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } } }
+    }
+  ]
 }
