@@ -80,6 +80,25 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Youware AI Backend")
 
+# ── Prometheus metrics ───────────────────────────────────────────────────────
+from monitoring import metrics_endpoint, track_request, ACTIVE_REQUESTS
+import time as _time
+
+@app.middleware("http")
+async def prometheus_middleware(request, call_next):
+    ACTIVE_REQUESTS.inc()
+    start = _time.time()
+    response = await call_next(request)
+    duration = _time.time() - start
+    endpoint = request.url.path
+    track_request(request.method, endpoint, response.status_code, duration)
+    ACTIVE_REQUESTS.dec()
+    return response
+
+@app.get("/metrics")
+def get_metrics():
+    return metrics_endpoint()
+
 # Register routers
 app.include_router(auth_router)
 app.include_router(documents_router)

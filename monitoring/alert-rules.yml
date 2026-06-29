@@ -1,0 +1,56 @@
+groups:
+  - name: data2dash_alerts
+    rules:
+      - alert: HighModelErrorRate
+        expr: rate(data2dash_model_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High model error rate detected"
+          description: "Agent {{ $labels.agent }} is experiencing {{ $value | humanize }} errors/sec (type: {{ $labels.error_type }})"
+
+      - alert: RateLimitHit
+        expr: increase(data2dash_rate_limit_hits_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Groq rate limit hit"
+          description: "Model {{ $labels.model }} hit rate limit. Consider upgrading Groq plan or reducing request frequency."
+
+      - alert: AllModelsExhausted
+        expr: increase(data2dash_model_errors_total{error_type="all_models_exhausted"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "All LLM models exhausted"
+          description: "All Groq models are rate-limited or unavailable. Users cannot use AI features."
+
+      - alert: BackendDown
+        expr: up{job="data2dash-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend is down"
+          description: "The Data2Dash backend has been unreachable for over 1 minute."
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(data2dash_request_latency_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency"
+          description: "95th percentile latency is {{ $value | humanize }}s over the last 5 minutes."
+
+      - alert: HighErrorRate
+        expr: rate(data2dash_requests_total{status=~"5.."}[5m]) / rate(data2dash_requests_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "More than 10% of requests are returning 5xx errors."

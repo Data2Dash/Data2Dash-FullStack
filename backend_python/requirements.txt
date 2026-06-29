@@ -37,3 +37,4 @@ alembic
 python-dotenv
 reportlab
 moviepy
+prometheus-client

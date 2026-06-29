@@ -19,6 +19,13 @@ from groq import Groq, RateLimitError
 
 logger = logging.getLogger(__name__)
 
+try:
+    from monitoring import track_model_call, track_model_error, track_rate_limit
+except ImportError:
+    def track_model_call(*a, **kw): pass
+    def track_model_error(*a, **kw): pass
+    def track_rate_limit(*a, **kw): pass
+
 # ---------------------------------------------------------------------------
 # Ordered fallback chain — best available models as of May 2026
 # ---------------------------------------------------------------------------
@@ -70,16 +77,22 @@ def chat_with_fallback(
             logger.debug("Skipping rate-limited model: %s", model)
             continue
         try:
+            import time as _t
+            _start = _t.time()
             result = _try_model(client, model, messages, max_tokens, temperature)
+            track_model_call("chat", model, _t.time() - _start)
             if model != preferred_model:
                 logger.info("Used fallback model %s (preferred %s unavailable)", model, preferred_model)
             return result
         except RateLimitError as exc:
             logger.warning("Rate limit on %s — trying next.", model)
             _rate_limited.add(model)
+            track_rate_limit(model)
+            track_model_error("chat", "rate_limit")
             last_error = exc
         except Exception as exc:
             err = str(exc)
+            track_model_error("chat", "api_error")
             if "decommissioned" in err or "400" in err:
                 logger.warning("Model %s decommissioned — removing from chain.", model)
                 _decommissioned.add(model)
@@ -87,6 +100,7 @@ def chat_with_fallback(
                 logger.warning("Error on %s: %s", model, exc)
             last_error = exc
 
+    track_model_error("chat", "all_models_exhausted")
     raise RuntimeError(
         f"All Groq models exhausted. Last error: {last_error}. "
         "Wait ~30 minutes for rate limits to reset, or upgrade your Groq plan."
