@@ -262,7 +262,7 @@ jobs:
         run: sleep 30
       - name: Check frontend
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/)
+          STATUS=$(curl -sk -L -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/)
           echo "Frontend: HTTP $STATUS"
           if [ "$STATUS" != "200" ]; then
             echo "::error::Frontend health check failed (HTTP $STATUS)"
@@ -270,11 +270,11 @@ jobs:
           fi
       - name: Check backend API
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/api/)
+          STATUS=$(curl -sk -L -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/api/)
           echo "Backend API: HTTP $STATUS"
       - name: Check metrics endpoint
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/metrics)
+          STATUS=$(curl -sk -L -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}/metrics)
           echo "Metrics: HTTP $STATUS"
       - name: Check Grafana
         run: |
@@ -285,7 +285,7 @@ jobs:
           echo "## Deployment Health Check" >> $GITHUB_STEP_SUMMARY
           echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend | ✅ $(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend API | ✅ $(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/api/) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Metrics | ✅ $(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/metrics) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ✅ $(curl -sk -L -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend API | ✅ $(curl -sk -L -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/api/) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Metrics | ✅ $(curl -sk -L -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}/metrics) |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | ✅ $(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.SERVER_HOST }}:3000/api/health) |" >> $GITHUB_STEP_SUMMARY
