@@ -216,7 +216,14 @@ jobs:
         run: docker build -f Dockerfile.frontend -t data2dash-frontend:test --build-arg VITE_API_URL=http://localhost:8000 .
       - name: Verify nginx config
         run: |
-          docker run --rm --add-host=backend:127.0.0.1 data2dash-frontend:test nginx -t
+          mkdir -p /tmp/fake-certs/live/data2dash.org
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout /tmp/fake-certs/live/data2dash.org/privkey.pem \
+            -out /tmp/fake-certs/live/data2dash.org/fullchain.pem \
+            -subj "/CN=data2dash.org"
+          docker run --rm --add-host=backend:127.0.0.1 \
+            -v /tmp/fake-certs:/etc/letsencrypt:ro \
+            data2dash-frontend:test nginx -t
 
   # ═══════════════════════════════════════════════════════════════════════
   # STAGE 5: Deploy (main branch push only, needs Stage 4)
